@@ -13,6 +13,7 @@ export default function Create({ volunteers }) {
         longitude: '',
         radius_meters: 100,
         status: 'upcoming',
+        assigned_by: '',
         volunteer_ids: [],
     });
 
@@ -135,6 +136,19 @@ export default function Create({ volunteers }) {
                                 style={{ ...inputStyle, height: '80px', resize: 'vertical' }}
                                 placeholder="Brief description of the activity..."
                             />
+                        </div>
+
+                        {/* Assigned By */}
+                        <div>
+                            <label style={labelStyle}>Assigned By</label>
+                            <input
+                                type="text"
+                                value={data.assigned_by}
+                                onChange={e => setData('assigned_by', e.target.value)}
+                                style={inputStyle}
+                                placeholder="e.g. Dr. John Reyes, Director"
+                            />
+                            {errors.assigned_by && <p style={errorStyle}>{errors.assigned_by}</p>}
                         </div>
 
                         {/* Date and Times */}

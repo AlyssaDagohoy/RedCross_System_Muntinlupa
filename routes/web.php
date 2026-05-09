@@ -5,10 +5,13 @@ use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\Volunteer\ProfileController as VolunteerProfileController;
 use App\Http\Controllers\Volunteer\AttendanceController;
 use App\Http\Controllers\Volunteer\FaceAttendanceController;
+use App\Http\Controllers\Volunteer\DocumentController;
+use App\Http\Controllers\Volunteer\CommunicationController;
 use App\Http\Controllers\WebAuthn\WebAuthnRegisterController;
 use App\Http\Controllers\WebAuthn\WebAuthnAttendanceController;
 use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
+use App\Http\Controllers\Admin\CommunicationController as AdminCommunicationController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -55,25 +58,76 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     // Attendance
     Route::get('/attendance', [AdminAttendanceController::class, 'index'])->name('attendance.index');
     Route::get('/attendance/export-pdf', [AdminAttendanceController::class, 'exportPdf'])->name('attendance.export.pdf');
+
+    // Communication
+    Route::get('/communication', [AdminCommunicationController::class, 'index'])->name('communication');
+    Route::post('/communication/reply/{sentEmail}', [AdminCommunicationController::class, 'reply'])->name('communication.reply');
+    Route::post('/communication/announce', [AdminCommunicationController::class, 'announce'])->name('communication.announce');
+    Route::delete('/communication/announcement/{announcement}', [AdminCommunicationController::class, 'deleteAnnouncement'])->name('communication.announcement.delete');
 });
 
 // Volunteer Routes
 Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunteer.')->group(function () {
+
     Route::get('/dashboard', function () {
         $user = auth()->user();
+
         $totalHours = \App\Models\Attendance::where('user_id', $user->id)->sum('hours_rendered');
-        $totalDays = \App\Models\Attendance::where('user_id', $user->id)->count();
-        $monthDays = \App\Models\Attendance::where('user_id', $user->id)
+        $totalDays  = \App\Models\Attendance::where('user_id', $user->id)->count();
+        $monthDays  = \App\Models\Attendance::where('user_id', $user->id)
             ->whereMonth('date', now()->month)
             ->count();
 
+        $assignedActivities = $user->activities()
+            ->where('date', '>=', now()->startOfDay())
+            ->orderBy('date', 'asc')
+            ->get(['activities.id', 'activities.name', 'activities.date', 'activities.location_name', 'activities.start_time', 'activities.end_time']);
+
+        $recentAttendance = \App\Models\Attendance::where('user_id', $user->id)
+            ->orderBy('date', 'desc')
+            ->limit(5)
+            ->get(['date', 'time_in', 'time_out', 'hours_rendered']);
+
         return Inertia::render('Volunteer/Dashboard', [
-            'auth'       => ['user' => $user],
-            'totalHours' => $totalHours,
-            'totalDays'  => $totalDays,
-            'monthDays'  => $monthDays,
+            'auth'               => ['user' => $user],
+            'totalHours'         => $totalHours,
+            'totalDays'          => $totalDays,
+            'monthDays'          => $monthDays,
+            'assignedActivities' => $assignedActivities,
+            'recentAttendance'   => $recentAttendance,
         ]);
     })->name('dashboard');
+
+    Route::get('/schedule', function () {
+        $user = auth()->user();
+        $activities = $user->activities()
+            ->orderBy('date', 'asc')
+            ->get([
+                'activities.id',
+                'activities.name',
+                'activities.date',
+                'activities.start_time',
+                'activities.end_time',
+                'activities.location_name',
+                'activities.status',
+                'activities.description',
+                'activities.assigned_by',
+            ]);
+
+        return Inertia::render('Volunteer/Schedule', [
+            'auth'       => ['user' => $user],
+            'activities' => $activities,
+        ]);
+    })->name('schedule');
+
+    // Communication
+    Route::get('/communication', [CommunicationController::class, 'index'])->name('communication');
+    Route::post('/communication/send', [CommunicationController::class, 'send'])->name('communication.send');
+
+    // Documents
+    Route::get('/documents', [DocumentController::class, 'index'])->name('documents');
+    Route::post('/documents', [DocumentController::class, 'store'])->name('documents.store');
+    Route::delete('/documents/{id}', [DocumentController::class, 'destroy'])->name('documents.destroy');
 
     Route::get('/profile', [VolunteerProfileController::class, 'edit'])->name('profile');
     Route::patch('/profile', [VolunteerProfileController::class, 'update'])->name('profile.update');

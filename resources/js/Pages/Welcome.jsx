@@ -1,5 +1,4 @@
 import { Head, Link } from '@inertiajs/react';
-import Navbar from '@/Components/Navbar';
 
 export default function Welcome({ auth }) {
     return (
@@ -9,7 +8,39 @@ export default function Welcome({ auth }) {
 
             <div style={{ fontFamily: "'Source Sans 3', sans-serif" }}>
 
-                <Navbar auth={auth} />
+                {/* NAVBAR */}
+                <nav style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '14px 48px', background: 'white',
+                    borderBottom: '1px solid #f0f0f0',
+                    boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
+                    fontFamily: 'Inter, sans-serif'
+                }}>
+                    <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+                        <div style={{
+                            width: '34px', height: '34px', background: '#DC2626',
+                            borderRadius: '4px', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', color: 'white', fontSize: '20px', fontWeight: '900'
+                        }}>+</div>
+                        <div>
+                            <strong style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#111' }}>Rizal Chapter</strong>
+                            <span style={{ display: 'block', fontSize: '10px', color: '#888' }}>Muntinlupa City Branch</span>
+                        </div>
+                    </Link>
+                    <ul style={{ display: 'flex', alignItems: 'center', gap: '28px', listStyle: 'none', margin: 0, padding: 0 }}>
+                        <li><Link href="/" style={{ color: '#555', textDecoration: 'none', fontSize: '13px' }}>Home</Link></li>
+                        <li><a href="#about" style={{ color: '#555', textDecoration: 'none', fontSize: '13px' }}>About</a></li>
+                        <li><a href="#contact" style={{ color: '#555', textDecoration: 'none', fontSize: '13px' }}>Contact</a></li>
+                        <li>
+                            <Link href={route('login')} style={{
+                                background: '#DC2626', color: 'white', padding: '8px 18px',
+                                borderRadius: '6px', fontSize: '12px', fontWeight: '600',
+                                textDecoration: 'none'
+                            }}>Log In</Link>
+                        </li>
+                    </ul>
+                </nav>
 
                 {/* HERO */}
                 <section style={{
@@ -21,12 +52,10 @@ export default function Welcome({ auth }) {
                         background: 'linear-gradient(135deg, #7f1d1d 0%, #1a1a1a 60%)',
                         opacity: 0.9
                     }}></div>
-
                     <div style={{
                         position: 'absolute', inset: 0, opacity: 0.05,
                         backgroundImage: 'repeating-linear-gradient(0deg, #fff 0, #fff 1px, transparent 1px, transparent 40px), repeating-linear-gradient(90deg, #fff 0, #fff 1px, transparent 1px, transparent 40px)'
                     }}></div>
-
                     <div style={{
                         position: 'absolute', right: '-40px', top: '50%',
                         transform: 'translateY(-50%)', width: '500px', height: '500px',
@@ -49,7 +78,6 @@ export default function Welcome({ auth }) {
                             <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#DC2626', display: 'inline-block' }}></span>
                             Volunteer Program 2026
                         </div>
-
                         <h1 style={{
                             fontFamily: 'Oswald, sans-serif',
                             fontSize: '76px', lineHeight: '0.95', color: 'white',
@@ -60,7 +88,6 @@ export default function Welcome({ auth }) {
                             Volunteer<br />
                             Needed
                         </h1>
-
                         <p style={{
                             fontSize: '16px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.75',
                             maxWidth: '460px', fontWeight: '300',
@@ -68,7 +95,6 @@ export default function Welcome({ auth }) {
                         }}>
                             Join the Philippine Red Cross – Muntinlupa City Branch and make a difference in your community through disaster response, blood services, and emergency care.
                         </p>
-
                         <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                             <a href="#about" style={{
                                 background: '#DC2626', color: 'white', padding: '13px 30px',
@@ -84,7 +110,6 @@ export default function Welcome({ auth }) {
                         </div>
                     </div>
 
-                    {/* Stats */}
                     <div style={{
                         position: 'absolute', bottom: '40px', right: '48px',
                         display: 'flex', gap: '40px', zIndex: 2
@@ -96,11 +121,7 @@ export default function Welcome({ auth }) {
                                     fontSize: '38px', color: 'white',
                                     lineHeight: '1', fontWeight: '600'
                                 }}>
-                                    {num.includes('/') ? (
-                                        <>{num}</>
-                                    ) : (
-                                        <>{num.replace('+', '')}<span style={{ color: '#DC2626' }}>+</span></>
-                                    )}
+                                    {num.includes('/') ? num : <>{num.replace('+', '')}<span style={{ color: '#DC2626' }}>+</span></>}
                                 </div>
                                 <div style={{
                                     fontSize: '11px', color: 'rgba(255,255,255,0.4)',
@@ -112,7 +133,7 @@ export default function Welcome({ auth }) {
                     </div>
                 </section>
 
-                {/* ABOUT SECTION */}
+                {/* ABOUT */}
                 <section id="about" style={{
                     padding: '80px 48px', background: '#fff',
                     display: 'flex', gap: '80px', alignItems: 'center'
@@ -130,17 +151,10 @@ export default function Welcome({ auth }) {
                         }}>
                             Serving Muntinlupa<br />Since Day One
                         </h2>
-                        <div style={{
-                            width: '40px', height: '2px',
-                            background: '#DC2626', marginBottom: '20px'
-                        }}></div>
-                        <p style={{
-                            fontSize: '15px', color: '#555', lineHeight: '1.85',
-                            fontWeight: '300'
-                        }}>
+                        <div style={{ width: '40px', height: '2px', background: '#DC2626', marginBottom: '20px' }}></div>
+                        <p style={{ fontSize: '15px', color: '#555', lineHeight: '1.85', fontWeight: '300' }}>
                             The Philippine Red Cross – Muntinlupa City Chapter is committed to saving lives and serving our local community in times of need. Through disaster preparedness, emergency response, blood services, and volunteer programs, we provide timely care, support, and hope to the people of Muntinlupa.
                         </p>
-
                     </div>
 
                     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', background: '#e8e8e8', border: '1px solid #e8e8e8', borderRadius: '8px', overflow: 'hidden' }}>
@@ -150,48 +164,15 @@ export default function Welcome({ auth }) {
                             { title: 'Emergency Care', desc: 'First aid and medical assistance for communities in need.' },
                             { title: 'Community Programs', desc: 'Training and outreach programs for Muntinlupa residents.' },
                         ].map(({ title, desc }) => (
-                            <div
-                                key={title}
-                                style={{
-                                    background: '#fff',
-                                    padding: '28px 24px',
-                                    transition: 'background 0.25s ease',
-                                    cursor: 'default',
-                                }}
-                                onMouseEnter={e => {
-                                    e.currentTarget.style.background = '#DC2626';
-                                    e.currentTarget.querySelector('.card-line').style.background = 'rgba(255,255,255,0.5)';
-                                    e.currentTarget.querySelector('.card-title').style.color = 'white';
-                                    e.currentTarget.querySelector('.card-desc').style.color = 'rgba(255,255,255,0.75)';
-                                }}
-                                onMouseLeave={e => {
-                                    e.currentTarget.style.background = '#fff';
-                                    e.currentTarget.querySelector('.card-line').style.background = '#DC2626';
-                                    e.currentTarget.querySelector('.card-title').style.color = '#111';
-                                    e.currentTarget.querySelector('.card-desc').style.color = '#777';
-                                }}
-                                onMouseDown={e => e.preventDefault()}
-                            >
-                                <div className="card-line" style={{
-                                    width: '28px', height: '2px',
-                                    background: '#DC2626',
-                                    marginBottom: '14px',
-                                    transition: 'background 0.25s ease',
-                                }}></div>
-                                <div className="card-title" style={{
-                                    fontFamily: 'Oswald, sans-serif',
-                                    fontSize: '15px', fontWeight: '600',
-                                    color: '#111',
-                                    marginBottom: '8px', letterSpacing: '0.3px',
-                                    textTransform: 'uppercase',
-                                    transition: 'color 0.25s ease',
+                            <div key={title} style={{ background: '#fff', padding: '28px 24px', cursor: 'default' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#DC2626'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}>
+                                <div style={{ width: '28px', height: '2px', background: '#DC2626', marginBottom: '14px' }}></div>
+                                <div style={{
+                                    fontFamily: 'Oswald, sans-serif', fontSize: '15px', fontWeight: '600',
+                                    color: '#111', marginBottom: '8px', letterSpacing: '0.3px', textTransform: 'uppercase'
                                 }}>{title}</div>
-                                <div className="card-desc" style={{
-                                    fontSize: '13px',
-                                    color: '#777',
-                                    lineHeight: '1.65', fontWeight: '300',
-                                    transition: 'color 0.25s ease',
-                                }}>{desc}</div>
+                                <div style={{ fontSize: '13px', color: '#777', lineHeight: '1.65', fontWeight: '300' }}>{desc}</div>
                             </div>
                         ))}
                     </div>
@@ -207,7 +188,6 @@ export default function Welcome({ auth }) {
                         © 2026 Philippine Red Cross – Muntinlupa City Branch. All rights reserved.
                     </span>
                 </div>
-
             </div>
         </>
     );

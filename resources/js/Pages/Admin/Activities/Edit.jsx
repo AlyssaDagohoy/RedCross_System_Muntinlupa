@@ -5,6 +5,7 @@ export default function Edit({ activity, volunteers }) {
     const { data, setData, patch, processing, errors } = useForm({
         name: activity.name || '',
         description: activity.description || '',
+        assigned_by: activity.assigned_by || '',
         date: activity.date || '',
         start_time: activity.start_time || '',
         end_time: activity.end_time || '',
@@ -135,6 +136,19 @@ export default function Edit({ activity, volunteers }) {
                                 style={{ ...inputStyle, height: '80px', resize: 'vertical' }}
                                 placeholder="Brief description of the activity..."
                             />
+                        </div>
+
+                        {/* Assigned By */}
+                        <div>
+                            <label style={labelStyle}>Assigned By</label>
+                            <input
+                                type="text"
+                                value={data.assigned_by}
+                                onChange={e => setData('assigned_by', e.target.value)}
+                                style={inputStyle}
+                                placeholder="e.g. Dr. John Reyes, Director"
+                            />
+                            {errors.assigned_by && <p style={errorStyle}>{errors.assigned_by}</p>}
                         </div>
 
                         {/* Date and Times */}

@@ -31,18 +31,19 @@ class ActivityController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'           => 'required|string|max:255',
-            'description'    => 'nullable|string',
-            'date'           => 'required|date',
-            'start_time'     => 'required',
-            'end_time'       => 'required',
-            'location_name'  => 'required|string',
-            'latitude'       => 'required|numeric',
-            'longitude'      => 'required|numeric',
-            'radius_meters'  => 'integer|min:50|max:1000',
-            'status'         => 'in:upcoming,ongoing,completed,cancelled',
-            'volunteer_ids'  => 'array',
-            'volunteer_ids.*'=> 'exists:users,id',
+            'name'            => 'required|string|max:255',
+            'description'     => 'nullable|string',
+            'assigned_by'     => 'nullable|string|max:255',
+            'date'            => 'required|date',
+            'start_time'      => 'required',
+            'end_time'        => 'required',
+            'location_name'   => 'required|string',
+            'latitude'        => 'required|numeric',
+            'longitude'       => 'required|numeric',
+            'radius_meters'   => 'integer|min:50|max:1000',
+            'status'          => 'in:upcoming,ongoing,completed,cancelled',
+            'volunteer_ids'   => 'array',
+            'volunteer_ids.*' => 'exists:users,id',
         ]);
 
         $activity = Activity::create($validated);
@@ -70,18 +71,19 @@ class ActivityController extends Controller
     public function update(Request $request, Activity $activity)
     {
         $validated = $request->validate([
-            'name'           => 'required|string|max:255',
-            'description'    => 'nullable|string',
-            'date'           => 'required|date',
-            'start_time'     => 'required',
-            'end_time'       => 'required',
-            'location_name'  => 'required|string',
-            'latitude'       => 'required|numeric',
-            'longitude'      => 'required|numeric',
-            'radius_meters'  => 'integer|min:50|max:1000',
-            'status'         => 'in:upcoming,ongoing,completed,cancelled',
-            'volunteer_ids'  => 'array',
-            'volunteer_ids.*'=> 'exists:users,id',
+            'name'            => 'required|string|max:255',
+            'description'     => 'nullable|string',
+            'assigned_by'     => 'nullable|string|max:255',
+            'date'            => 'required|date',
+            'start_time'      => 'required',
+            'end_time'        => 'required',
+            'location_name'   => 'required|string',
+            'latitude'        => 'required|numeric',
+            'longitude'       => 'required|numeric',
+            'radius_meters'   => 'integer|min:50|max:1000',
+            'status'          => 'in:upcoming,ongoing,completed,cancelled',
+            'volunteer_ids'   => 'array',
+            'volunteer_ids.*' => 'exists:users,id',
         ]);
 
         $activity->update($validated);

@@ -17,6 +17,7 @@ class Activity extends Model
         'longitude',
         'radius_meters',
         'status',
+        'assigned_by',
     ];
 
     public function volunteers()

@@ -1,10 +1,18 @@
 <?php
 
+use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Laragear\WebAuthn\Models\WebAuthnCredential;
+use Illuminate\Support\Facades\Schema;
 
-return WebAuthnCredential::migration()->with(function (Blueprint $table) {
-    // Here you can add custom columns to the Two Factor table.
-    //
-    // $table->string('alias')->nullable();
-});
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // WebAuthn removed
+    }
+
+    public function down(): void
+    {
+        // WebAuthn removed
+    }
+};
