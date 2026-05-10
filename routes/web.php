@@ -88,6 +88,16 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
             ->limit(5)
             ->get(['date', 'time_in', 'time_out', 'hours_rendered']);
 
+        $todayRecord = \App\Models\Attendance::where('user_id', $user->id)
+            ->whereDate('date', today())
+            ->with('activity')
+            ->first();
+
+        $activities = $user->activities()
+            ->where('status', '!=', 'cancelled')
+            ->whereDate('date', '>=', today())
+            ->get(['activities.id', 'activities.name', 'activities.location_name', 'activities.date', 'activities.latitude', 'activities.longitude', 'activities.radius_meters']);
+
         return Inertia::render('Volunteer/Dashboard', [
             'auth'               => ['user' => $user],
             'totalHours'         => $totalHours,
@@ -95,6 +105,8 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
             'monthDays'          => $monthDays,
             'assignedActivities' => $assignedActivities,
             'recentAttendance'   => $recentAttendance,
+            'todayRecord'        => $todayRecord,
+            'activities'         => $activities,
         ]);
     })->name('dashboard');
 

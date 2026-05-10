@@ -5,7 +5,7 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
     const volunteer = auth.user;
     const emails = sentEmails || [];
     const announces = announcements || [];
-    const [activeTab, setActiveTab] = useState('compose'); // compose | inbox | announcements | sent
+    const [activeTab, setActiveTab] = useState('compose');
 
     const { data, setData, post, processing, reset, errors } = useForm({
         to: 'rizalmuntinlupa@redcross.org.ph',
@@ -13,7 +13,9 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
         message: '',
     });
 
-    const handleLogout = () => router.post(route('logout'));
+    const handleLogout = () => {
+        document.getElementById('logout-form').submit();
+    };
 
     const handleSend = (e) => {
         e.preventDefault();
@@ -26,50 +28,71 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
     const unreadReplies = repliedEmails.length;
 
     const sidebarLinks = [
-        { key: 'dashboard',     label: 'Dashboard',     href: route('volunteer.dashboard'),     icon: <GridIcon /> },
-        { key: 'schedule',      label: 'Schedule',      href: route('volunteer.schedule'),      icon: <CalIcon /> },
-        { key: 'communication', label: 'Communication', href: route('volunteer.communication'), icon: <ChatIcon /> },
-        { key: 'attendance',    label: 'Attendance',    href: route('volunteer.attendance'),    icon: <CheckIcon /> },
-        { key: 'documents',     label: '301',           href: route('volunteer.documents'),     icon: <FolderIcon /> },
+        { key: 'dashboard',     label: 'Dashboard',  href: route('volunteer.dashboard'),     icon: <DashIcon /> },
+        { key: 'schedule',      label: 'Schedule',   href: route('volunteer.schedule'),      icon: <CalIcon /> },
+        { key: 'communication', label: 'Messages',   href: route('volunteer.communication'), icon: <MsgIcon /> },
+        { key: 'attendance',    label: 'Attendance', href: route('volunteer.attendance'),    icon: <ClockIcon /> },
+        { key: 'documents',     label: '301 Docs',   href: route('volunteer.documents'),     icon: <DocIcon /> },
     ];
 
-    const tabStyle = (key) => ({
-        padding: '8px 16px', fontSize: '13px', fontWeight: activeTab === key ? '600' : '400',
-        color: activeTab === key ? '#CC0000' : '#6B7280',
-        borderBottom: activeTab === key ? '2px solid #CC0000' : '2px solid transparent',
-        background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-    });
+    const tabs = [
+        { key: 'compose',       label: 'Compose' },
+        { key: 'inbox',         label: 'Inbox',         badge: unreadReplies > 0 ? unreadReplies : null,  badgeColor: '#CC0000' },
+        { key: 'announcements', label: 'Announcements', badge: announces.length > 0 ? announces.length : null, badgeColor: '#F59E0B' },
+        { key: 'sent',          label: 'Sent' },
+    ];
 
     return (
         <>
             <Head title="Communication" />
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+            <style>{`
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { background: #f7f7f8; }
+                .nav-link:hover { background: rgba(0,0,0,0.12) !important; }
+                ::-webkit-scrollbar { width: 4px; }
+                ::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 4px; }
+                input:focus, textarea:focus { border-color: #CC0000 !important; }
+            `}</style>
 
-            <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', sans-serif", background: '#F3F4F6' }}>
+            <form id="logout-form" method="POST" action={route('logout')} style={{ display: 'none' }}>
+                <input type="hidden" name="_token" value={document.querySelector('meta[name="csrf-token"]')?.content} />
+            </form>
+
+            <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', sans-serif", background: '#f7f7f8' }}>
 
                 {/* SIDEBAR */}
                 <aside style={{
-                    width: '160px', minHeight: '100vh', background: '#CC0000',
-                    display: 'flex', flexDirection: 'column', flexShrink: 0,
-                    position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 100,
+                    width: '210px', position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 100,
+                    background: '#CC0000', display: 'flex', flexDirection: 'column',
+                    boxShadow: '4px 0 20px rgba(204,0,0,0.15)',
                 }}>
-                    <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: 'white', lineHeight: '1.4' }}>
-                            Rizal Chapter<br />
-                            <span style={{ fontWeight: '400', opacity: 0.85 }}>Muntinlupa City Branch</span>
+                    <div style={{ padding: '28px 22px 22px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '11px', fontWeight: '600', color: 'white' }}>Red Cross</div>
+                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', marginTop: '1px' }}>Muntinlupa Branch</div>
+                            </div>
                         </div>
                     </div>
-                    <nav style={{ flex: 1, paddingTop: '8px' }}>
+
+                    <nav style={{ flex: 1, padding: '12px 10px' }}>
+                        <div style={{ fontSize: '9px', fontWeight: '600', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', textTransform: 'uppercase', padding: '0 12px', marginBottom: '6px' }}>Menu</div>
                         {sidebarLinks.map(item => {
                             const isActive = item.key === 'communication';
                             return (
-                                <Link key={item.key} href={item.href} style={{
+                                <Link key={item.key} href={item.href} className="nav-link" style={{
                                     display: 'flex', alignItems: 'center', gap: '10px',
-                                    padding: '11px 16px', textDecoration: 'none',
+                                    padding: '9px 12px', textDecoration: 'none', borderRadius: '7px',
+                                    marginBottom: '2px',
                                     background: isActive ? 'rgba(0,0,0,0.18)' : 'transparent',
-                                    color: 'white', fontSize: '13px',
+                                    color: 'white', fontSize: '12px',
                                     fontWeight: isActive ? '600' : '400',
                                     borderLeft: isActive ? '3px solid white' : '3px solid transparent',
+                                    transition: 'all 0.15s',
                                 }}>
                                     <span style={{ opacity: isActive ? 1 : 0.7, flexShrink: 0 }}>{item.icon}</span>
                                     {item.label}
@@ -77,113 +100,148 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                             );
                         })}
                     </nav>
-                    <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+
+                    <div style={{ padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '10px', padding: '0 4px' }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600', flexShrink: 0 }}>
+                                {volunteer?.name?.charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ overflow: 'hidden' }}>
+                                <div style={{ fontSize: '11px', fontWeight: '500', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{volunteer?.name}</div>
+                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>Volunteer</div>
+                            </div>
+                        </div>
                         <button onClick={handleLogout} style={{
-                            display: 'flex', alignItems: 'center', gap: '8px',
-                            background: 'transparent', border: 'none', cursor: 'pointer',
-                            color: 'rgba(255,255,255,0.75)', fontSize: '12px', padding: 0, width: '100%'
+                            width: '100%', padding: '7px 12px', borderRadius: '7px',
+                            background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.15)',
+                            color: 'rgba(255,255,255,0.75)', fontSize: '11px', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '7px',
                         }}>
-                            <span style={{ fontSize: '16px' }}>⏻</span> Log out
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            Sign out
                         </button>
                     </div>
                 </aside>
 
                 {/* MAIN */}
-                <div style={{ marginLeft: '160px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ marginLeft: '210px', flex: 1, display: 'flex', flexDirection: 'column' }}>
 
                     {/* Topbar */}
                     <header style={{
-                        background: 'white', padding: '0 28px', height: '52px',
+                        height: '54px', background: 'white', borderBottom: '1px solid #ebebeb',
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        borderBottom: '1px solid #E5E7EB', position: 'sticky', top: 0, zIndex: 50
+                        padding: '0 28px', position: 'sticky', top: 0, zIndex: 50,
                     }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#111' }}>Communication</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <input placeholder="Search" style={{
-                                border: '1px solid #E5E7EB', borderRadius: '20px',
-                                padding: '5px 14px', fontSize: '12px', width: '160px',
-                                outline: 'none', background: '#F9FAFB'
-                            }} />
-                            <div style={{
-                                width: '30px', height: '30px', borderRadius: '50%',
-                                background: '#CC0000', display: 'flex', alignItems: 'center',
-                                justifyContent: 'center', color: 'white', fontSize: '12px', fontWeight: '700'
-                            }}>
+                        <div>
+                            <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Messages</span>
+                            <span style={{ fontSize: '11px', color: '#bbb', margin: '0 6px' }}>·</span>
+                            <span style={{ fontSize: '11px', color: '#aaa' }}>
+                                {new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                            </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ position: 'relative' }}>
+                                <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input
+                                    placeholder="Search messages..."
+                                    style={{ border: '1px solid #ebebeb', borderRadius: '8px', padding: '6px 12px 6px 28px', fontSize: '11px', width: '180px', outline: 'none', background: '#f9f9f9', color: '#333' }}
+                                />
+                            </div>
+                            <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600' }}>
                                 {volunteer?.name?.charAt(0).toUpperCase()}
                             </div>
                         </div>
                     </header>
 
                     {/* Tabs */}
-                    <div style={{ background: 'white', borderBottom: '1px solid #E5E7EB', padding: '0 28px', display: 'flex', gap: '4px' }}>
-                        <button style={tabStyle('compose')} onClick={() => setActiveTab('compose')}>✏️ Compose</button>
-                        <button style={tabStyle('inbox')} onClick={() => setActiveTab('inbox')}>
-                            📥 Inbox {unreadReplies > 0 && <span style={{ background: '#CC0000', color: 'white', borderRadius: '10px', padding: '1px 6px', fontSize: '10px', marginLeft: '4px' }}>{unreadReplies}</span>}
-                        </button>
-                        <button style={tabStyle('announcements')} onClick={() => setActiveTab('announcements')}>
-                            📢 Announcements {announces.length > 0 && <span style={{ background: '#F59E0B', color: 'white', borderRadius: '10px', padding: '1px 6px', fontSize: '10px', marginLeft: '4px' }}>{announces.length}</span>}
-                        </button>
-                        <button style={tabStyle('sent')} onClick={() => setActiveTab('sent')}>📤 Sent</button>
+                    <div style={{ background: 'white', borderBottom: '1px solid #ebebeb', padding: '0 28px', display: 'flex', gap: '2px' }}>
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => setActiveTab(tab.key)}
+                                style={{
+                                    padding: '12px 16px', fontSize: '11px', fontWeight: activeTab === tab.key ? '600' : '400',
+                                    color: activeTab === tab.key ? '#CC0000' : '#aaa',
+                                    borderBottom: activeTab === tab.key ? '2px solid #CC0000' : '2px solid transparent',
+                                    background: 'none', border: 'none', borderRadius: 0,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                    transition: 'color 0.15s',
+                                }}
+                            >
+                                {tab.label}
+                                {tab.badge && (
+                                    <span style={{
+                                        background: tab.badgeColor, color: 'white',
+                                        borderRadius: '10px', padding: '1px 6px',
+                                        fontSize: '9px', fontWeight: '600',
+                                    }}>{tab.badge}</span>
+                                )}
+                            </button>
+                        ))}
                     </div>
 
                     <main style={{ flex: 1, padding: '28px', overflowY: 'auto' }}>
 
-                        {/* COMPOSE TAB */}
+                        {/* COMPOSE */}
                         {activeTab === 'compose' && (
                             <div style={{ maxWidth: '560px' }}>
-                                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #E5E7EB', padding: '28px' }}>
-                                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#111', marginBottom: '20px' }}>Send a Message to Admin</div>
-                                    <form onSubmit={handleSend}>
-                                        <div style={{ marginBottom: '16px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: '500', color: '#374151', display: 'block', marginBottom: '6px' }}>To:</label>
-                                            <input type="text" value={data.to} onChange={e => setData('to', e.target.value)}
-                                                style={{ width: '100%', padding: '10px 14px', border: '1px solid #E5E7EB', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box', background: '#FAFAFA' }} />
-                                            {errors.to && <div style={{ fontSize: '11px', color: '#CC0000', marginTop: '4px' }}>{errors.to}</div>}
-                                        </div>
-                                        <div style={{ marginBottom: '16px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: '500', color: '#374151', display: 'block', marginBottom: '6px' }}>Subject</label>
-                                            <input type="text" value={data.subject} onChange={e => setData('subject', e.target.value)}
-                                                placeholder="e.g. Schedule Conflict"
-                                                style={{ width: '100%', padding: '10px 14px', border: '1px solid #E5E7EB', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
-                                            {errors.subject && <div style={{ fontSize: '11px', color: '#CC0000', marginTop: '4px' }}>{errors.subject}</div>}
-                                        </div>
-                                        <div style={{ marginBottom: '20px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: '500', color: '#374151', display: 'block', marginBottom: '6px' }}>Message</label>
-                                            <textarea value={data.message} onChange={e => setData('message', e.target.value)}
-                                                placeholder="Type your message here..." rows={6}
-                                                style={{ width: '100%', padding: '10px 14px', border: '1px solid #E5E7EB', borderRadius: '8px', fontSize: '13px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-                                            {errors.message && <div style={{ fontSize: '11px', color: '#CC0000', marginTop: '4px' }}>{errors.message}</div>}
-                                        </div>
-                                        <button type="submit" disabled={processing}
-                                            style={{ background: '#CC0000', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 24px', fontSize: '13px', fontWeight: '600', cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.7 : 1 }}>
-                                            {processing ? 'Sending...' : 'Send Message'}
-                                        </button>
-                                    </form>
+                                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                                    <div style={{ padding: '13px 18px', borderBottom: '1px solid #f5f5f5' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Send a Message to Admin</span>
+                                    </div>
+                                    <div style={{ padding: '20px 18px' }}>
+                                        <form onSubmit={handleSend}>
+                                            <div style={{ marginBottom: '14px' }}>
+                                                <label style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>To</label>
+                                                <input type="text" value={data.to} onChange={e => setData('to', e.target.value)}
+                                                    style={{ width: '100%', padding: '9px 12px', border: '1px solid #ebebeb', borderRadius: '8px', fontSize: '12px', outline: 'none', background: '#f9f9f9', color: '#333' }} />
+                                                {errors.to && <div style={{ fontSize: '10px', color: '#CC0000', marginTop: '4px' }}>{errors.to}</div>}
+                                            </div>
+                                            <div style={{ marginBottom: '14px' }}>
+                                                <label style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>Subject</label>
+                                                <input type="text" value={data.subject} onChange={e => setData('subject', e.target.value)}
+                                                    placeholder="e.g. Schedule Conflict"
+                                                    style={{ width: '100%', padding: '9px 12px', border: '1px solid #ebebeb', borderRadius: '8px', fontSize: '12px', outline: 'none', color: '#333' }} />
+                                                {errors.subject && <div style={{ fontSize: '10px', color: '#CC0000', marginTop: '4px' }}>{errors.subject}</div>}
+                                            </div>
+                                            <div style={{ marginBottom: '18px' }}>
+                                                <label style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '6px' }}>Message</label>
+                                                <textarea value={data.message} onChange={e => setData('message', e.target.value)}
+                                                    placeholder="Type your message here..." rows={6}
+                                                    style={{ width: '100%', padding: '9px 12px', border: '1px solid #ebebeb', borderRadius: '8px', fontSize: '12px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', color: '#333' }} />
+                                                {errors.message && <div style={{ fontSize: '10px', color: '#CC0000', marginTop: '4px' }}>{errors.message}</div>}
+                                            </div>
+                                            <button type="submit" disabled={processing}
+                                                style={{ background: '#CC0000', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 22px', fontSize: '11px', fontWeight: '600', cursor: processing ? 'not-allowed' : 'pointer', opacity: processing ? 0.7 : 1 }}>
+                                                {processing ? 'Sending...' : 'Send Message'}
+                                            </button>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* INBOX TAB */}
+                        {/* INBOX */}
                         {activeTab === 'inbox' && (
-                            <div style={{ maxWidth: '680px' }}>
-                                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-                                    <div style={{ padding: '16px 20px', borderBottom: '1px solid #F3F4F6' }}>
-                                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#111' }}>Admin Replies</div>
+                            <div style={{ maxWidth: '640px' }}>
+                                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                                    <div style={{ padding: '13px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Admin Replies</span>
+                                        <span style={{ fontSize: '10px', color: '#aaa' }}>{repliedEmails.length} message{repliedEmails.length !== 1 ? 's' : ''}</span>
                                     </div>
                                     {repliedEmails.length === 0 ? (
-                                        <div style={{ padding: '48px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
-                                            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📭</div>
-                                            No replies yet
+                                        <div style={{ padding: '48px', textAlign: 'center' }}>
+                                            <div style={{ fontSize: '11px', color: '#ccc' }}>No replies yet</div>
                                         </div>
                                     ) : (
                                         repliedEmails.map((email, i) => (
-                                            <div key={i} style={{ padding: '18px 20px', borderBottom: i < repliedEmails.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
-                                                <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginBottom: '4px' }}>{email.subject}</div>
-                                                <div style={{ fontSize: '12px', color: '#6B7280', marginBottom: '10px' }}>Your message: {email.message}</div>
-                                                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '12px 14px' }}>
-                                                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#CC0000', marginBottom: '4px' }}>Admin replied:</div>
-                                                    <div style={{ fontSize: '13px', color: '#374151' }}>{email.reply}</div>
-                                                    <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '6px' }}>
+                                            <div key={i} style={{ padding: '16px 18px', borderBottom: i < repliedEmails.length - 1 ? '0.5px solid #f5f5f5' : 'none' }}>
+                                                <div style={{ fontSize: '12px', fontWeight: '600', color: '#111', marginBottom: '3px' }}>{email.subject}</div>
+                                                <div style={{ fontSize: '11px', color: '#aaa', marginBottom: '10px' }}>Your message: {email.message}</div>
+                                                <div style={{ background: '#fef2f2', border: '0.5px solid #fecaca', borderRadius: '8px', padding: '11px 14px' }}>
+                                                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#CC0000', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Admin replied</div>
+                                                    <div style={{ fontSize: '12px', color: '#333', lineHeight: '1.6' }}>{email.reply}</div>
+                                                    <div style={{ fontSize: '10px', color: '#bbb', marginTop: '6px' }}>
                                                         {email.replied_at ? new Date(email.replied_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                                                     </div>
                                                 </div>
@@ -194,30 +252,30 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                             </div>
                         )}
 
-                        {/* ANNOUNCEMENTS TAB */}
+                        {/* ANNOUNCEMENTS */}
                         {activeTab === 'announcements' && (
-                            <div style={{ maxWidth: '680px' }}>
-                                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-                                    <div style={{ padding: '16px 20px', borderBottom: '1px solid #F3F4F6' }}>
-                                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#111' }}>Announcements from Admin</div>
+                            <div style={{ maxWidth: '640px' }}>
+                                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                                    <div style={{ padding: '13px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Announcements from Admin</span>
+                                        <span style={{ fontSize: '10px', color: '#aaa' }}>{announces.length} announcement{announces.length !== 1 ? 's' : ''}</span>
                                     </div>
                                     {announces.length === 0 ? (
-                                        <div style={{ padding: '48px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
-                                            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📢</div>
-                                            No announcements yet
+                                        <div style={{ padding: '48px', textAlign: 'center' }}>
+                                            <div style={{ fontSize: '11px', color: '#ccc' }}>No announcements yet</div>
                                         </div>
                                     ) : (
                                         announces.map((a, i) => (
-                                            <div key={i} style={{ padding: '18px 20px', borderBottom: i < announces.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+                                            <div key={i} style={{ padding: '16px 18px', borderBottom: i < announces.length - 1 ? '0.5px solid #f5f5f5' : 'none' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                                                    <span style={{ background: '#FEF2F2', color: '#CC0000', fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px' }}>ANNOUNCEMENT</span>
-                                                    <span style={{ fontSize: '10px', color: '#9CA3AF' }}>
+                                                    <span style={{ background: '#fef2f2', color: '#CC0000', fontSize: '9px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', letterSpacing: '0.5px' }}>ANNOUNCEMENT</span>
+                                                    <span style={{ fontSize: '10px', color: '#bbb' }}>
                                                         {new Date(a.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                     </span>
                                                 </div>
-                                                <div style={{ fontSize: '14px', fontWeight: '600', color: '#111', marginBottom: '6px' }}>{a.title}</div>
-                                                <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.6' }}>{a.body}</div>
-                                                <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '8px' }}>Posted by: {a.admin?.name || 'Admin'}</div>
+                                                <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginBottom: '6px' }}>{a.title}</div>
+                                                <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.6' }}>{a.body}</div>
+                                                <div style={{ fontSize: '10px', color: '#bbb', marginTop: '8px' }}>Posted by: {a.admin?.name || 'Admin'}</div>
                                             </div>
                                         ))
                                     )}
@@ -225,31 +283,31 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                             </div>
                         )}
 
-                        {/* SENT TAB */}
+                        {/* SENT */}
                         {activeTab === 'sent' && (
-                            <div style={{ maxWidth: '680px' }}>
-                                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-                                    <div style={{ padding: '16px 20px', borderBottom: '1px solid #F3F4F6' }}>
-                                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#111' }}>Sent Messages</div>
+                            <div style={{ maxWidth: '640px' }}>
+                                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                                    <div style={{ padding: '13px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Sent Messages</span>
+                                        <span style={{ fontSize: '10px', color: '#aaa' }}>{emails.length} message{emails.length !== 1 ? 's' : ''}</span>
                                     </div>
                                     {emails.length === 0 ? (
-                                        <div style={{ padding: '48px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
-                                            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📤</div>
-                                            No sent messages yet
+                                        <div style={{ padding: '48px', textAlign: 'center' }}>
+                                            <div style={{ fontSize: '11px', color: '#ccc' }}>No sent messages yet</div>
                                         </div>
                                     ) : (
                                         emails.map((email, i) => (
-                                            <div key={i} style={{ padding: '16px 20px', borderBottom: i < emails.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+                                            <div key={i} style={{ padding: '14px 18px', borderBottom: i < emails.length - 1 ? '0.5px solid #f5f5f5' : 'none' }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                    <div style={{ flex: 1 }}>
-                                                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginBottom: '3px' }}>{email.subject}</div>
-                                                        <div style={{ fontSize: '12px', color: '#6B7280', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.message}</div>
-                                                        <div style={{ fontSize: '10px', color: '#9CA3AF' }}>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#111', marginBottom: '3px' }}>{email.subject}</div>
+                                                        <div style={{ fontSize: '11px', color: '#aaa', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.message}</div>
+                                                        <div style={{ fontSize: '10px', color: '#bbb' }}>
                                                             {new Date(email.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                         </div>
                                                     </div>
                                                     {email.reply && (
-                                                        <span style={{ background: '#DCFCE7', color: '#166534', fontSize: '10px', fontWeight: '600', padding: '2px 8px', borderRadius: '10px', flexShrink: 0, marginLeft: '12px' }}>Replied</span>
+                                                        <span style={{ background: '#f0fdf4', color: '#16a34a', fontSize: '9px', fontWeight: '600', padding: '2px 8px', borderRadius: '10px', flexShrink: 0, marginLeft: '12px' }}>Replied</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -266,18 +324,18 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
     );
 }
 
-function GridIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
+function DashIcon() {
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
 }
 function CalIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
 }
-function ChatIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
+function MsgIcon() {
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
 }
-function CheckIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>;
+function ClockIcon() {
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 }
-function FolderIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>;
+function DocIcon() {
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 }

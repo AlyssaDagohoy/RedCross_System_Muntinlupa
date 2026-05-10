@@ -21,16 +21,13 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
         return () => document.removeEventListener('mousedown', handleClick);
     }, []);
 
-    const activities = assignedActivities || [];
+    const activitiesList = assignedActivities || [];
     const attendance = recentAttendance || [];
 
-    const todayActivities = activities.filter(a =>
+    const todayActivities = activitiesList.filter(a =>
         new Date(a.date).toDateString() === new Date().toDateString()
     );
-    const upcomingActivities = activities.filter(a => new Date(a.date) > new Date()).slice(0, 5);
-    const hoursToday = attendance
-        .filter(r => new Date(r.date).toDateString() === new Date().toDateString())
-        .reduce((sum, r) => sum + parseFloat(r.hours_rendered || 0), 0);
+    const upcomingActivities = activitiesList.filter(a => new Date(a.date) > new Date()).slice(0, 5);
     const isCheckedIn = attendance.some(r =>
         new Date(r.date).toDateString() === new Date().toDateString() && r.time_in && !r.time_out
     );
@@ -63,7 +60,7 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
 
             <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', sans-serif", background: '#f7f7f8' }}>
 
-                {/* ── SIDEBAR ── */}
+                {/* SIDEBAR */}
                 <aside style={{
                     width: '210px', position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 100,
                     background: '#CC0000', display: 'flex', flexDirection: 'column',
@@ -71,11 +68,7 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                 }}>
                     <div style={{ padding: '28px 22px 22px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-                            <div style={{
-                                width: '28px', height: '28px', borderRadius: '6px',
-                                background: 'rgba(255,255,255,0.2)', display: 'flex',
-                                alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                            }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                             </div>
                             <div>
@@ -95,8 +88,8 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                     padding: '9px 12px', textDecoration: 'none', borderRadius: '7px',
                                     marginBottom: '2px',
                                     background: isActive ? 'rgba(0,0,0,0.18)' : 'transparent',
-                                    color: 'white',
-                                    fontSize: '12px', fontWeight: isActive ? '600' : '400',
+                                    color: 'white', fontSize: '12px',
+                                    fontWeight: isActive ? '600' : '400',
                                     borderLeft: isActive ? '3px solid white' : '3px solid transparent',
                                     transition: 'all 0.15s',
                                 }}>
@@ -109,18 +102,11 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
 
                     <div style={{ padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '10px', padding: '0 4px' }}>
-                            <div style={{
-                                width: '28px', height: '28px', borderRadius: '50%',
-                                background: 'rgba(255,255,255,0.25)', display: 'flex',
-                                alignItems: 'center', justifyContent: 'center',
-                                color: 'white', fontSize: '11px', fontWeight: '600', flexShrink: 0,
-                            }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600', flexShrink: 0 }}>
                                 {volunteer?.name?.charAt(0).toUpperCase()}
                             </div>
                             <div style={{ overflow: 'hidden' }}>
-                                <div style={{ fontSize: '11px', fontWeight: '500', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {volunteer?.name}
-                                </div>
+                                <div style={{ fontSize: '11px', fontWeight: '500', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{volunteer?.name}</div>
                                 <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>Volunteer</div>
                             </div>
                         </div>
@@ -136,7 +122,7 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                     </div>
                 </aside>
 
-                {/* ── MAIN ── */}
+                {/* MAIN */}
                 <div style={{ marginLeft: '210px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
 
                     {/* Topbar */}
@@ -156,11 +142,7 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <div style={{ position: 'relative' }}>
                                 <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                <input placeholder="Search..." style={{
-                                    border: '1px solid #ebebeb', borderRadius: '8px',
-                                    padding: '6px 12px 6px 28px', fontSize: '11px',
-                                    width: '170px', outline: 'none', background: '#f9f9f9', color: '#333',
-                                }} />
+                                <input placeholder="Search..." style={{ border: '1px solid #ebebeb', borderRadius: '8px', padding: '6px 12px 6px 28px', fontSize: '11px', width: '170px', outline: 'none', background: '#f9f9f9', color: '#333' }} />
                             </div>
 
                             <div ref={notifRef} style={{ position: 'relative' }}>
@@ -168,47 +150,27 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                     width: '34px', height: '34px', borderRadius: '8px',
                                     background: showNotifications ? '#f0f0f0' : '#f7f7f8',
                                     border: '1px solid #ebebeb', cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    position: 'relative',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
                                 }}>
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                                     {attendance.length > 0 && (
-                                        <span style={{
-                                            position: 'absolute', top: '6px', right: '6px',
-                                            width: '6px', height: '6px', borderRadius: '50%',
-                                            background: '#CC0000', border: '1.5px solid white',
-                                        }} />
+                                        <span style={{ position: 'absolute', top: '6px', right: '6px', width: '6px', height: '6px', borderRadius: '50%', background: '#CC0000', border: '1.5px solid white' }} />
                                     )}
                                 </button>
 
                                 {showNotifications && (
-                                    <div style={{
-                                        position: 'absolute', right: 0, top: '42px', width: '300px',
-                                        background: 'white', borderRadius: '10px',
-                                        border: '1px solid #ebebeb',
-                                        boxShadow: '0 8px 24px rgba(0,0,0,0.08)', zIndex: 200,
-                                        overflow: 'hidden',
-                                    }}>
+                                    <div style={{ position: 'absolute', right: 0, top: '42px', width: '300px', background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', zIndex: 200, overflow: 'hidden' }}>
                                         <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Notifications</span>
-                                            <span style={{ fontSize: '10px', color: '#CC0000', fontWeight: '500', background: '#fff0f0', padding: '2px 7px', borderRadius: '10px' }}>
-                                                {attendance.slice(0, 5).length} new
-                                            </span>
+                                            <span style={{ fontSize: '10px', color: '#CC0000', fontWeight: '500', background: '#fff0f0', padding: '2px 7px', borderRadius: '10px' }}>{attendance.slice(0, 5).length} new</span>
                                         </div>
                                         <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
                                             {attendance.length === 0 ? (
                                                 <div style={{ padding: '28px', textAlign: 'center', color: '#bbb', fontSize: '12px' }}>No notifications</div>
                                             ) : (
                                                 attendance.slice(0, 5).map((rec, i) => (
-                                                    <div key={i} className="notif-item" style={{
-                                                        padding: '11px 16px', borderBottom: '1px solid #f5f5f5',
-                                                        display: 'flex', gap: '11px', cursor: 'pointer',
-                                                    }}>
-                                                        <div style={{
-                                                            width: '30px', height: '30px', borderRadius: '8px',
-                                                            background: '#f5f5f5', display: 'flex',
-                                                            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                                                        }}>
+                                                    <div key={i} className="notif-item" style={{ padding: '11px 16px', borderBottom: '1px solid #f5f5f5', display: 'flex', gap: '11px', cursor: 'pointer' }}>
+                                                        <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                                                         </div>
                                                         <div>
@@ -224,34 +186,25 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                             )}
                                         </div>
                                         <div style={{ padding: '10px 16px', borderTop: '1px solid #f0f0f0', textAlign: 'center' }}>
-                                            <Link href={route('volunteer.attendance')} onClick={() => setShowNotifications(false)}
-                                                style={{ fontSize: '11px', color: '#CC0000', fontWeight: '500', textDecoration: 'none' }}>
-                                                View all →
-                                            </Link>
+                                            <Link href={route('volunteer.attendance')} onClick={() => setShowNotifications(false)} style={{ fontSize: '11px', color: '#CC0000', fontWeight: '500', textDecoration: 'none' }}>View all →</Link>
                                         </div>
                                     </div>
                                 )}
                             </div>
 
-                            <div style={{
-                                width: '30px', height: '30px', borderRadius: '50%',
-                                background: '#CC0000', display: 'flex', alignItems: 'center',
-                                justifyContent: 'center', color: 'white', fontSize: '11px',
-                                fontWeight: '600', cursor: 'pointer',
-                            }}>
+                            <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
                                 {volunteer?.name?.charAt(0).toUpperCase()}
                             </div>
                         </div>
                     </header>
 
-                    {/* Page Content */}
                     <main style={{ flex: 1, padding: '28px', overflowY: 'auto' }}>
 
-                        {/* Welcome Banner — RED */}
+                        {/* Welcome Banner */}
                         <div style={{
                             background: 'linear-gradient(135deg, #CC0000 0%, #990000 100%)',
-                            borderRadius: '12px', padding: '22px 28px',
-                            marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            borderRadius: '12px', padding: '22px 28px', marginBottom: '20px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             position: 'relative', overflow: 'hidden',
                         }}>
                             <div style={{ position: 'absolute', right: -60, top: -60, width: 220, height: 220, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
@@ -282,8 +235,6 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
 
                         {/* Tasks + Upcoming */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '12px', marginBottom: '20px' }}>
-
-                            {/* Today's Tasks */}
                             <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
                                 <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Today's Tasks</span>
@@ -328,7 +279,6 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                 )}
                             </div>
 
-                            {/* Upcoming */}
                             <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
                                 <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
                                     <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Upcoming</span>
@@ -368,10 +318,7 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                             ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
                                     {attendance.slice(0, 4).map((rec, i) => (
-                                        <div key={i} style={{
-                                            padding: '16px 18px',
-                                            borderRight: i < 3 ? '1px solid #f5f5f5' : 'none',
-                                        }}>
+                                        <div key={i} style={{ padding: '16px 18px', borderRight: i < 3 ? '1px solid #f5f5f5' : 'none' }}>
                                             <div style={{ fontSize: '10px', color: '#bbb', marginBottom: '6px' }}>
                                                 {new Date(rec.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
                                             </div>
@@ -379,7 +326,8 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                                 {rec.hours_rendered ? `${parseFloat(rec.hours_rendered).toFixed(1)}h` : '—'}
                                             </div>
                                             <div style={{ fontSize: '10px', color: '#bbb' }}>
-                                                {rec.time_in ? rec.time_in.substring(0, 5) : '—'} {rec.time_out ? `→ ${rec.time_out.substring(0, 5)}` : ''}
+                                                {rec.time_in ? new Date(rec.time_in).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                                                {rec.time_out ? ` → ${new Date(rec.time_out).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}` : ''}
                                             </div>
                                             <div style={{
                                                 display: 'inline-block', marginTop: '8px',

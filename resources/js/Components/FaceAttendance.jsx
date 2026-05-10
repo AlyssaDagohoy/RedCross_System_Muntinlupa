@@ -34,7 +34,7 @@ export default function FaceAttendance({ todayRecord, activities }) {
             ]);
             setModelsLoaded(true);
         } catch (err) {
-            setStatus('❌ Failed to load face models.');
+            setStatus('Failed to load face models.');
         }
     };
 
@@ -44,7 +44,7 @@ export default function FaceAttendance({ todayRecord, activities }) {
             streamRef.current = stream;
             if (videoRef.current) videoRef.current.srcObject = stream;
         } catch {
-            setStatus('❌ Camera access denied.');
+            setStatus('Camera access denied.');
             setCameraOn(false);
         }
     };
@@ -81,10 +81,10 @@ export default function FaceAttendance({ todayRecord, activities }) {
 
     const handleRegister = async () => {
         setLoading(true);
-        setStatus('📸 Scanning face...');
+        setStatus('Scanning face...');
         const descriptor = await captureFaceDescriptor();
         if (!descriptor) {
-            setStatus('❌ No face detected. Please look at the camera.');
+            setStatus('No face detected. Please look at the camera.');
             setLoading(false);
             return;
         }
@@ -95,30 +95,30 @@ export default function FaceAttendance({ todayRecord, activities }) {
                 body: JSON.stringify({ face_descriptor: descriptor }),
             });
             const data = await res.json();
-            setStatus(res.ok ? '✅ ' + data.message : '❌ ' + data.message);
+            setStatus(data.message);
             if (res.ok) { setCameraOn(false); setMode(null); }
         } catch {
-            setStatus('❌ Something went wrong.');
+            setStatus('Something went wrong.');
         }
         setLoading(false);
     };
 
     const handleTimeIn = async () => {
-        if (!selectedActivity) { setStatus('❌ Please select an activity.'); return; }
+        if (!selectedActivity) { setStatus('Please select an activity.'); return; }
         setLoading(true);
-        setStatus('📸 Scanning face...');
+        setStatus('Scanning face...');
         const descriptor = await captureFaceDescriptor();
         if (!descriptor) {
-            setStatus('❌ No face detected. Please look at the camera.');
+            setStatus('No face detected. Please look at the camera.');
             setLoading(false);
             return;
         }
-        setStatus('📍 Checking location...');
+        setStatus('Checking location...');
         let location;
         try {
             location = await getLocation();
         } catch (e) {
-            setStatus('❌ ' + e.message);
+            setStatus(e.message);
             setLoading(false);
             return;
         }
@@ -129,30 +129,30 @@ export default function FaceAttendance({ todayRecord, activities }) {
                 body: JSON.stringify({ activity_id: selectedActivity, face_descriptor: descriptor, ...location }),
             });
             const data = await res.json();
-            setStatus(res.ok ? '✅ ' + data.message : '❌ ' + data.message);
+            setStatus(data.message);
             if (res.ok) { stopCamera(); setCameraOn(false); setMode(null); setTimeout(() => window.location.reload(), 1500); }
         } catch {
-            setStatus('❌ Something went wrong.');
+            setStatus('Something went wrong.');
         }
         setLoading(false);
     };
 
     const handleTimeOut = async () => {
-        if (!selectedActivity) { setStatus('❌ Please select an activity.'); return; }
+        if (!selectedActivity) { setStatus('Please select an activity.'); return; }
         setLoading(true);
-        setStatus('📸 Scanning face...');
+        setStatus('Scanning face...');
         const descriptor = await captureFaceDescriptor();
         if (!descriptor) {
-            setStatus('❌ No face detected. Please look at the camera.');
+            setStatus('No face detected. Please look at the camera.');
             setLoading(false);
             return;
         }
-        setStatus('📍 Checking location...');
+        setStatus('Checking location...');
         let location;
         try {
             location = await getLocation();
         } catch (e) {
-            setStatus('❌ ' + e.message);
+            setStatus(e.message);
             setLoading(false);
             return;
         }
@@ -163,10 +163,10 @@ export default function FaceAttendance({ todayRecord, activities }) {
                 body: JSON.stringify({ activity_id: selectedActivity, face_descriptor: descriptor, ...location }),
             });
             const data = await res.json();
-            setStatus(res.ok ? '✅ ' + data.message : '❌ ' + data.message);
+            setStatus(data.message);
             if (res.ok) { stopCamera(); setCameraOn(false); setMode(null); setTimeout(() => window.location.reload(), 1500); }
         } catch {
-            setStatus('❌ Something went wrong.');
+            setStatus('Something went wrong.');
         }
         setLoading(false);
     };
@@ -185,35 +185,37 @@ export default function FaceAttendance({ todayRecord, activities }) {
     };
 
     return (
-        <div style={{ background: 'white', borderRadius: '8px', border: '1px solid #e8e8e8', padding: '28px', marginBottom: '24px' }}>
-            <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: '16px', color: '#111', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '20px' }}>
-                Today's Attendance
-            </div>
+        <div style={{ fontFamily: "'Inter', sans-serif" }}>
 
-            {/* Today stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            {/* Today's Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '18px' }}>
                 {[
-                    { label: 'Time In', value: todayRecord?.time_in ? new Date(todayRecord.time_in).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—', color: '#16a34a' },
-                    { label: 'Time Out', value: todayRecord?.time_out ? new Date(todayRecord.time_out).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—', color: '#DC2626' },
-                    { label: 'Hours Today', value: todayRecord?.hours_rendered ?? '0.00', color: '#111' },
+                    { label: 'Time In', value: todayRecord?.time_in ? new Date(todayRecord.time_in).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : '— : —', color: '#16a34a' },
+                    { label: 'Time Out', value: todayRecord?.time_out ? new Date(todayRecord.time_out).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : '— : —', color: '#CC0000' },
+                    { label: 'Hours Today', value: todayRecord?.hours_rendered ? parseFloat(todayRecord.hours_rendered).toFixed(2) : '0.00', color: '#111' },
                 ].map(({ label, value, color }) => (
-                    <div key={label} style={{ textAlign: 'center', padding: '16px', background: '#f9fafb', borderRadius: '6px' }}>
-                        <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>{label}</div>
-                        <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: '22px', color }}>{value}</div>
+                    <div key={label} style={{ textAlign: 'center', padding: '14px 10px', background: '#f9f9f9', borderRadius: '8px', border: '1px solid #f0f0f0' }}>
+                        <div style={{ fontSize: '9px', color: '#bbb', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '600', marginBottom: '6px' }}>{label}</div>
+                        <div style={{ fontSize: '16px', fontWeight: '700', color }}>{value}</div>
                     </div>
                 ))}
             </div>
 
-            {/* Activity selector */}
+            {/* Activity Selector */}
             {!alreadyTimedOut && (
-                <div style={{ marginBottom: '16px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: '600', color: '#374151', display: 'block', marginBottom: '6px' }}>
+                <div style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
                         Select Activity
-                    </label>
+                    </div>
                     <select
                         value={selectedActivity}
                         onChange={e => setSelectedActivity(e.target.value)}
-                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px' }}
+                        style={{
+                            width: '100%', padding: '9px 12px',
+                            border: '1px solid #ebebeb', borderRadius: '8px',
+                            fontSize: '12px', color: '#333', background: 'white',
+                            outline: 'none', cursor: 'pointer',
+                        }}
                     >
                         <option value="">-- Select your assigned activity --</option>
                         {activities?.map(a => (
@@ -223,21 +225,21 @@ export default function FaceAttendance({ todayRecord, activities }) {
                 </div>
             )}
 
-            {/* Models loading indicator */}
+            {/* Models loading */}
             {!modelsLoaded && (
-                <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px' }}>
-                    ⏳ Loading face recognition models...
+                <div style={{ fontSize: '11px', color: '#bbb', marginBottom: '12px' }}>
+                    Loading face recognition models...
                 </div>
             )}
 
             {/* Camera */}
             {cameraOn && (
-                <div style={{ marginBottom: '16px', textAlign: 'center' }}>
+                <div style={{ marginBottom: '14px', textAlign: 'center' }}>
                     <video
                         ref={videoRef}
                         autoPlay
                         muted
-                        style={{ width: '100%', maxWidth: '400px', borderRadius: '8px', border: '2px solid #DC2626' }}
+                        style={{ width: '100%', maxWidth: '380px', borderRadius: '8px', border: '1.5px solid #ebebeb' }}
                     />
                 </div>
             )}
@@ -245,49 +247,50 @@ export default function FaceAttendance({ todayRecord, activities }) {
             {/* Status */}
             {status && (
                 <div style={{
-                    padding: '10px 14px', borderRadius: '6px', marginBottom: '16px', fontSize: '13px',
-                    background: status.startsWith('✅') ? '#f0fdf4' : '#fef2f2',
-                    color: status.startsWith('✅') ? '#166534' : '#991b1b',
+                    padding: '9px 14px', borderRadius: '7px', marginBottom: '14px', fontSize: '11px', fontWeight: '500',
+                    background: (status.toLowerCase().includes('success') || status.toLowerCase().includes('timed') || status.toLowerCase().includes('registered')) ? '#f0fdf4' : '#fef2f2',
+                    color: (status.toLowerCase().includes('success') || status.toLowerCase().includes('timed') || status.toLowerCase().includes('registered')) ? '#166534' : '#991b1b',
+                    border: (status.toLowerCase().includes('success') || status.toLowerCase().includes('timed') || status.toLowerCase().includes('registered')) ? '1px solid #bbf7d0' : '1px solid #fecaca',
                 }}>
                     {status}
                 </div>
             )}
 
-            {/* Buttons */}
+            {/* Action Buttons */}
             {!mode ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     <button
                         onClick={() => startMode('timein')}
                         disabled={alreadyTimedIn || !modelsLoaded}
                         style={{
-                            padding: '12px', borderRadius: '6px', border: 'none',
+                            padding: '10px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: '600',
                             cursor: alreadyTimedIn || !modelsLoaded ? 'not-allowed' : 'pointer',
-                            background: alreadyTimedIn ? '#e5e7eb' : '#16a34a',
-                            color: alreadyTimedIn ? '#9ca3af' : 'white',
-                            fontWeight: '600', fontSize: '14px',
+                            background: alreadyTimedIn ? '#f5f5f5' : '#16a34a',
+                            color: alreadyTimedIn ? '#bbb' : 'white',
+                            transition: 'background 0.15s',
                         }}
                     >
-                        {alreadyTimedIn ? '✓ Timed In' : '📷 Face Time In'}
+                        {alreadyTimedIn ? 'Timed In' : 'Face Time In'}
                     </button>
                     <button
                         onClick={() => startMode('timeout')}
                         disabled={!alreadyTimedIn || alreadyTimedOut || !modelsLoaded}
                         style={{
-                            padding: '12px', borderRadius: '6px', border: 'none',
+                            padding: '10px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: '600',
                             cursor: (!alreadyTimedIn || alreadyTimedOut) ? 'not-allowed' : 'pointer',
-                            background: alreadyTimedOut ? '#e5e7eb' : (!alreadyTimedIn ? '#e5e7eb' : '#DC2626'),
-                            color: (alreadyTimedOut || !alreadyTimedIn) ? '#9ca3af' : 'white',
-                            fontWeight: '600', fontSize: '14px',
+                            background: alreadyTimedOut ? '#f5f5f5' : !alreadyTimedIn ? '#f5f5f5' : '#CC0000',
+                            color: (alreadyTimedOut || !alreadyTimedIn) ? '#bbb' : 'white',
+                            transition: 'background 0.15s',
                         }}
                     >
-                        {alreadyTimedOut ? '✓ Timed Out' : '📷 Face Time Out'}
+                        {alreadyTimedOut ? 'Timed Out' : 'Face Time Out'}
                     </button>
                 </div>
             ) : mode !== 'register' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     <button
                         onClick={cancelMode}
-                        style={{ padding: '12px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#f3f4f6', color: '#374151', fontWeight: '600' }}
+                        style={{ padding: '10px', borderRadius: '7px', border: '1px solid #ebebeb', cursor: 'pointer', background: 'white', color: '#555', fontSize: '11px', fontWeight: '600' }}
                     >
                         Cancel
                     </button>
@@ -295,37 +298,41 @@ export default function FaceAttendance({ todayRecord, activities }) {
                         onClick={mode === 'timein' ? handleTimeIn : handleTimeOut}
                         disabled={loading || !modelsLoaded}
                         style={{
-                            padding: '12px', borderRadius: '6px', border: 'none',
+                            padding: '10px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: '600',
                             cursor: loading ? 'not-allowed' : 'pointer',
-                            background: '#DC2626', color: 'white', fontWeight: '600', fontSize: '14px',
+                            background: '#CC0000', color: 'white',
                         }}
                     >
-                        {loading ? 'Processing...' : '📸 Capture & Submit'}
+                        {loading ? 'Processing...' : 'Capture & Submit'}
                     </button>
                 </div>
             ) : null}
 
-            {/* Register face */}
-            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e8e8e8' }}>
-                <div style={{ fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px', color: '#888', marginBottom: '8px' }}>
-                    First time? Register your face:
+            {/* Register Face */}
+            <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid #f5f5f5' }}>
+                <div style={{ fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#bbb', marginBottom: '8px' }}>
+                    First time? Register your face
                 </div>
                 {mode === 'register' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <button onClick={cancelMode} style={{ padding: '10px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#f3f4f6', color: '#374151', fontWeight: '600' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <button onClick={cancelMode} style={{ padding: '9px', borderRadius: '7px', border: '1px solid #ebebeb', cursor: 'pointer', background: 'white', color: '#555', fontSize: '11px', fontWeight: '600' }}>
                             Cancel
                         </button>
-                        <button onClick={handleRegister} disabled={loading || !modelsLoaded} style={{ padding: '10px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#111', color: 'white', fontWeight: '600' }}>
-                            {loading ? 'Registering...' : '📸 Capture Face'}
+                        <button onClick={handleRegister} disabled={loading || !modelsLoaded} style={{ padding: '9px', borderRadius: '7px', border: 'none', cursor: 'pointer', background: '#111', color: 'white', fontSize: '11px', fontWeight: '600' }}>
+                            {loading ? 'Registering...' : 'Capture Face'}
                         </button>
                     </div>
                 ) : (
                     <button
                         onClick={() => startMode('register')}
                         disabled={!modelsLoaded}
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: 'none', cursor: modelsLoaded ? 'pointer' : 'not-allowed', background: '#111', color: 'white', fontWeight: '600' }}
+                        style={{
+                            width: '100%', padding: '9px', borderRadius: '7px', border: 'none',
+                            cursor: modelsLoaded ? 'pointer' : 'not-allowed',
+                            background: '#111', color: 'white', fontSize: '11px', fontWeight: '600',
+                        }}
                     >
-                        🤳 Register Face
+                        Register Face
                     </button>
                 )}
             </div>
