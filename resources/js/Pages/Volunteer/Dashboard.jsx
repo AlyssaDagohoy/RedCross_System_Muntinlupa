@@ -1,14 +1,24 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function VolunteerDashboard({ auth, totalHours, totalDays, monthDays, assignedActivities, recentAttendance }) {
     const volunteer = auth.user;
     const [currentTime, setCurrentTime] = useState(new Date());
-    const [availability, setAvailability] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const notifRef = useRef(null);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
+    }, []);
+
+    useEffect(() => {
+        const handleClick = (e) => {
+            if (notifRef.current && !notifRef.current.contains(e.target))
+                setShowNotifications(false);
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
     }, []);
 
     const activities = assignedActivities || [];
@@ -17,13 +27,10 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
     const todayActivities = activities.filter(a =>
         new Date(a.date).toDateString() === new Date().toDateString()
     );
-
     const upcomingActivities = activities.filter(a => new Date(a.date) > new Date()).slice(0, 5);
-
     const hoursToday = attendance
         .filter(r => new Date(r.date).toDateString() === new Date().toDateString())
         .reduce((sum, r) => sum + parseFloat(r.hours_rendered || 0), 0);
-
     const isCheckedIn = attendance.some(r =>
         new Date(r.date).toDateString() === new Date().toDateString() && r.time_in && !r.time_out
     );
@@ -31,44 +38,67 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
     const handleLogout = () => router.post(route('logout'));
 
     const sidebarLinks = [
-        { key: 'dashboard',     label: 'Dashboard',     href: route('volunteer.dashboard'),     icon: <GridIcon /> },
-        { key: 'schedule',      label: 'Schedule',      href: route('volunteer.schedule'),      icon: <CalIcon /> },
-        { key: 'communication', label: 'Communication', href: route('volunteer.communication'), icon: <ChatIcon /> },
-        { key: 'attendance',    label: 'Attendance',    href: route('volunteer.attendance'),    icon: <CheckIcon /> },
-        { key: 'documents',     label: '301',           href: route('volunteer.documents'),     icon: <FolderIcon /> },
+        { key: 'dashboard',     label: 'Dashboard',  href: route('volunteer.dashboard'),     icon: <DashIcon /> },
+        { key: 'schedule',      label: 'Schedule',   href: route('volunteer.schedule'),      icon: <CalIcon /> },
+        { key: 'communication', label: 'Messages',   href: route('volunteer.communication'), icon: <MsgIcon /> },
+        { key: 'attendance',    label: 'Attendance', href: route('volunteer.attendance'),    icon: <ClockIcon /> },
+        { key: 'documents',     label: '301 Docs',   href: route('volunteer.documents'),     icon: <DocIcon /> },
     ];
 
     return (
         <>
-            <Head title="Volunteer Dashboard" />
+            <Head title="Dashboard" />
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+            <style>{`
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { background: #f7f7f8; }
+                .nav-link:hover { background: rgba(0,0,0,0.12) !important; }
+                .task-row:hover { background: #fafafa !important; }
+                .notif-item:hover { background: #f9f9f9 !important; }
+                .btn-view:hover { background: #aa0000 !important; }
+                ::-webkit-scrollbar { width: 4px; }
+                ::-webkit-scrollbar-track { background: transparent; }
+                ::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 4px; }
+            `}</style>
 
-            <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', sans-serif", background: '#F3F4F6' }}>
+            <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', sans-serif", background: '#f7f7f8' }}>
 
-                {/* SIDEBAR */}
+                {/* ── SIDEBAR ── */}
                 <aside style={{
-                    width: '160px', minHeight: '100vh', background: '#CC0000',
-                    display: 'flex', flexDirection: 'column', flexShrink: 0,
-                    position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 100,
+                    width: '210px', position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 100,
+                    background: '#CC0000', display: 'flex', flexDirection: 'column',
+                    boxShadow: '4px 0 20px rgba(204,0,0,0.15)',
                 }}>
-                    <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: 'white', lineHeight: '1.4' }}>
-                            Rizal Chapter<br />
-                            <span style={{ fontWeight: '400', opacity: 0.85 }}>Muntinlupa City Branch</span>
+                    <div style={{ padding: '28px 22px 22px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                            <div style={{
+                                width: '28px', height: '28px', borderRadius: '6px',
+                                background: 'rgba(255,255,255,0.2)', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '11px', fontWeight: '600', color: 'white', letterSpacing: '0.3px' }}>Red Cross</div>
+                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', marginTop: '1px' }}>Muntinlupa Branch</div>
+                            </div>
                         </div>
                     </div>
 
-                    <nav style={{ flex: 1, paddingTop: '8px' }}>
+                    <nav style={{ flex: 1, padding: '12px 10px' }}>
+                        <div style={{ fontSize: '9px', fontWeight: '600', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', textTransform: 'uppercase', padding: '0 12px', marginBottom: '6px' }}>Menu</div>
                         {sidebarLinks.map(item => {
                             const isActive = item.key === 'dashboard';
                             return (
-                                <Link key={item.key} href={item.href} style={{
+                                <Link key={item.key} href={item.href} className="nav-link" style={{
                                     display: 'flex', alignItems: 'center', gap: '10px',
-                                    padding: '11px 16px', textDecoration: 'none',
+                                    padding: '9px 12px', textDecoration: 'none', borderRadius: '7px',
+                                    marginBottom: '2px',
                                     background: isActive ? 'rgba(0,0,0,0.18)' : 'transparent',
-                                    color: 'white', fontSize: '13px',
-                                    fontWeight: isActive ? '600' : '400',
+                                    color: 'white',
+                                    fontSize: '12px', fontWeight: isActive ? '600' : '400',
                                     borderLeft: isActive ? '3px solid white' : '3px solid transparent',
+                                    transition: 'all 0.15s',
                                 }}>
                                     <span style={{ opacity: isActive ? 1 : 0.7, flexShrink: 0 }}>{item.icon}</span>
                                     {item.label}
@@ -77,216 +107,313 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                         })}
                     </nav>
 
-                    <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                    <div style={{ padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '10px', padding: '0 4px' }}>
+                            <div style={{
+                                width: '28px', height: '28px', borderRadius: '50%',
+                                background: 'rgba(255,255,255,0.25)', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center',
+                                color: 'white', fontSize: '11px', fontWeight: '600', flexShrink: 0,
+                            }}>
+                                {volunteer?.name?.charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ overflow: 'hidden' }}>
+                                <div style={{ fontSize: '11px', fontWeight: '500', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {volunteer?.name}
+                                </div>
+                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>Volunteer</div>
+                            </div>
+                        </div>
                         <button onClick={handleLogout} style={{
-                            display: 'flex', alignItems: 'center', gap: '8px',
-                            background: 'transparent', border: 'none', cursor: 'pointer',
-                            color: 'rgba(255,255,255,0.75)', fontSize: '12px', padding: 0, width: '100%'
+                            width: '100%', padding: '7px 12px', borderRadius: '7px',
+                            background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.15)',
+                            color: 'rgba(255,255,255,0.75)', fontSize: '11px', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '7px',
                         }}>
-                            <span style={{ fontSize: '16px' }}>⏻</span> Log out
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            Sign out
                         </button>
                     </div>
                 </aside>
 
-                {/* MAIN */}
-                <div style={{ marginLeft: '160px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                {/* ── MAIN ── */}
+                <div style={{ marginLeft: '210px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
 
                     {/* Topbar */}
                     <header style={{
-                        background: 'white', padding: '0 28px', height: '56px',
+                        height: '54px', background: 'white', borderBottom: '1px solid #ebebeb',
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        borderBottom: '1px solid #E5E7EB', position: 'sticky', top: 0, zIndex: 50
+                        padding: '0 28px', position: 'sticky', top: 0, zIndex: 50,
                     }}>
-                        <div style={{ fontSize: '13px', color: '#6B7280' }}>
-                            {currentTime.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        <div>
+                            <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Dashboard</span>
+                            <span style={{ fontSize: '11px', color: '#bbb', margin: '0 6px' }}>·</span>
+                            <span style={{ fontSize: '11px', color: '#aaa' }}>
+                                {currentTime.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                            </span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <input placeholder="Search" style={{
-                                border: '1px solid #E5E7EB', borderRadius: '20px',
-                                padding: '6px 16px', fontSize: '13px', width: '180px',
-                                outline: 'none', background: '#F9FAFB', color: '#374151'
-                            }} />
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ position: 'relative' }}>
+                                <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input placeholder="Search..." style={{
+                                    border: '1px solid #ebebeb', borderRadius: '8px',
+                                    padding: '6px 12px 6px 28px', fontSize: '11px',
+                                    width: '170px', outline: 'none', background: '#f9f9f9', color: '#333',
+                                }} />
+                            </div>
+
+                            <div ref={notifRef} style={{ position: 'relative' }}>
+                                <button onClick={() => setShowNotifications(!showNotifications)} style={{
+                                    width: '34px', height: '34px', borderRadius: '8px',
+                                    background: showNotifications ? '#f0f0f0' : '#f7f7f8',
+                                    border: '1px solid #ebebeb', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    position: 'relative',
+                                }}>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                    {attendance.length > 0 && (
+                                        <span style={{
+                                            position: 'absolute', top: '6px', right: '6px',
+                                            width: '6px', height: '6px', borderRadius: '50%',
+                                            background: '#CC0000', border: '1.5px solid white',
+                                        }} />
+                                    )}
+                                </button>
+
+                                {showNotifications && (
+                                    <div style={{
+                                        position: 'absolute', right: 0, top: '42px', width: '300px',
+                                        background: 'white', borderRadius: '10px',
+                                        border: '1px solid #ebebeb',
+                                        boxShadow: '0 8px 24px rgba(0,0,0,0.08)', zIndex: 200,
+                                        overflow: 'hidden',
+                                    }}>
+                                        <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Notifications</span>
+                                            <span style={{ fontSize: '10px', color: '#CC0000', fontWeight: '500', background: '#fff0f0', padding: '2px 7px', borderRadius: '10px' }}>
+                                                {attendance.slice(0, 5).length} new
+                                            </span>
+                                        </div>
+                                        <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                                            {attendance.length === 0 ? (
+                                                <div style={{ padding: '28px', textAlign: 'center', color: '#bbb', fontSize: '12px' }}>No notifications</div>
+                                            ) : (
+                                                attendance.slice(0, 5).map((rec, i) => (
+                                                    <div key={i} className="notif-item" style={{
+                                                        padding: '11px 16px', borderBottom: '1px solid #f5f5f5',
+                                                        display: 'flex', gap: '11px', cursor: 'pointer',
+                                                    }}>
+                                                        <div style={{
+                                                            width: '30px', height: '30px', borderRadius: '8px',
+                                                            background: '#f5f5f5', display: 'flex',
+                                                            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                                        }}>
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontSize: '11px', fontWeight: '500', color: '#222' }}>
+                                                                Attendance — {rec.hours_rendered ? `${parseFloat(rec.hours_rendered).toFixed(1)}h recorded` : 'check-in ongoing'}
+                                                            </div>
+                                                            <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>
+                                                                {new Date(rec.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                        <div style={{ padding: '10px 16px', borderTop: '1px solid #f0f0f0', textAlign: 'center' }}>
+                                            <Link href={route('volunteer.attendance')} onClick={() => setShowNotifications(false)}
+                                                style={{ fontSize: '11px', color: '#CC0000', fontWeight: '500', textDecoration: 'none' }}>
+                                                View all →
+                                            </Link>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <div style={{
-                                width: '32px', height: '32px', borderRadius: '50%',
+                                width: '30px', height: '30px', borderRadius: '50%',
                                 background: '#CC0000', display: 'flex', alignItems: 'center',
-                                justifyContent: 'center', color: 'white', fontSize: '13px', fontWeight: '700'
+                                justifyContent: 'center', color: 'white', fontSize: '11px',
+                                fontWeight: '600', cursor: 'pointer',
                             }}>
                                 {volunteer?.name?.charAt(0).toUpperCase()}
                             </div>
                         </div>
                     </header>
 
-                    {/* Body */}
-                    <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                    {/* Page Content */}
+                    <main style={{ flex: 1, padding: '28px', overflowY: 'auto' }}>
 
-                        {/* Center */}
-                        <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
-
-                            {/* Welcome Banner */}
-                            <div style={{
-                                background: '#CC0000', borderRadius: '12px',
-                                padding: '24px 28px', marginBottom: '20px',
-                                position: 'relative', overflow: 'hidden'
-                            }}>
-                                <div style={{ position: 'absolute', right: -30, top: -30, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
-                                <div style={{ position: 'absolute', right: 60, bottom: -40, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
-                                <div style={{ fontSize: '20px', fontWeight: '700', color: 'white', marginBottom: '4px' }}>
-                                    Welcome, {volunteer?.name}!
+                        {/* Welcome Banner — RED */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #CC0000 0%, #990000 100%)',
+                            borderRadius: '12px', padding: '22px 28px',
+                            marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            position: 'relative', overflow: 'hidden',
+                        }}>
+                            <div style={{ position: 'absolute', right: -60, top: -60, width: 220, height: 220, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
+                            <div style={{ position: 'absolute', right: 40, bottom: -80, width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
+                            <div style={{ position: 'relative', zIndex: 1 }}>
+                                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', fontWeight: '500', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '5px' }}>Volunteer Portal</div>
+                                <div style={{ fontSize: '18px', fontWeight: '600', color: 'white', marginBottom: '3px' }}>
+                                    Good {currentTime.getHours() < 12 ? 'morning' : currentTime.getHours() < 18 ? 'afternoon' : 'evening'}, {volunteer?.name?.split(' ')[0]}.
                                 </div>
-                                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>Here's what's happening today</div>
-                            </div>
-
-                            {/* Status Row */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '20px' }}>
-
-                                <div style={{ background: 'white', borderRadius: '10px', padding: '16px 20px', border: '1px solid #E5E7EB' }}>
-                                    <div style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '500', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Today's Status</div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isCheckedIn ? '#22C55E' : '#9CA3AF', display: 'inline-block' }} />
-                                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#111' }}>{isCheckedIn ? 'Checked in' : 'Not checked in'}</span>
-                                    </div>
-                                </div>
-
-                                <div style={{ background: 'white', borderRadius: '10px', padding: '16px 20px', border: '1px solid #E5E7EB' }}>
-                                    <div style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '500', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Availability</div>
-                                    <div style={{ fontSize: '12px', color: availability ? '#22C55E' : '#6B7280', marginBottom: '6px' }}>{availability ? 'Available' : 'Not Available'}</div>
-                                    <div onClick={() => setAvailability(!availability)} style={{
-                                        width: '40px', height: '22px', borderRadius: '11px',
-                                        background: availability ? '#22C55E' : '#D1D5DB',
-                                        position: 'relative', cursor: 'pointer', transition: 'background 0.2s'
-                                    }}>
-                                        <div style={{
-                                            position: 'absolute', top: '3px',
-                                            left: availability ? '21px' : '3px',
-                                            width: '16px', height: '16px', borderRadius: '50%',
-                                            background: 'white', transition: 'left 0.2s',
-                                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                                        }} />
-                                    </div>
-                                </div>
-
-                                <div style={{ background: 'white', borderRadius: '10px', padding: '16px 20px', border: '1px solid #E5E7EB' }}>
-                                    <div style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '500', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Hours this day</div>
-                                    <div style={{ fontSize: '22px', fontWeight: '700', color: '#111' }}>
-                                        {hoursToday.toFixed(2)} <span style={{ fontSize: '13px', fontWeight: '400', color: '#6B7280' }}>hrs</span>
-                                    </div>
+                                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.55)' }}>
+                                    {currentTime.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' })} &nbsp;·&nbsp; {currentTime.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                 </div>
                             </div>
+                            <div style={{ position: 'relative', zIndex: 1 }}>
+                                <div style={{
+                                    padding: '6px 14px', borderRadius: '20px',
+                                    background: isCheckedIn ? 'rgba(34,197,94,0.2)' : 'rgba(0,0,0,0.2)',
+                                    border: `1px solid ${isCheckedIn ? 'rgba(34,197,94,0.5)' : 'rgba(255,255,255,0.15)'}`,
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isCheckedIn ? '#22C55E' : 'rgba(255,255,255,0.4)', display: 'inline-block' }} />
+                                    <span style={{ fontSize: '11px', color: isCheckedIn ? '#22C55E' : 'rgba(255,255,255,0.6)', fontWeight: '500' }}>
+                                        {isCheckedIn ? 'Checked In' : 'Not Checked In'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tasks + Upcoming */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '12px', marginBottom: '20px' }}>
 
                             {/* Today's Tasks */}
-                            <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-                                <div style={{ padding: '16px 20px', borderBottom: '1px solid #F3F4F6' }}>
-                                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#111' }}>Today's Task</div>
+                            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Today's Tasks</span>
+                                    <span style={{ fontSize: '10px', color: '#bbb', background: '#f5f5f5', padding: '2px 8px', borderRadius: '10px' }}>
+                                        {todayActivities.length} task{todayActivities.length !== 1 ? 's' : ''}
+                                    </span>
                                 </div>
-
                                 {todayActivities.length === 0 ? (
-                                    <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
-                                        <div style={{ fontSize: '32px', marginBottom: '8px' }}>📋</div>
-                                        No tasks scheduled for today
+                                    <div style={{ padding: '36px', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '11px', color: '#ccc' }}>No tasks scheduled for today</div>
                                     </div>
                                 ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                        {todayActivities.map((act, i) => (
-                                            <div key={act.id} style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                padding: '14px 20px',
-                                                borderBottom: i < todayActivities.length - 1 ? '1px solid #F9FAFB' : 'none',
-                                            }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', flexShrink: 0 }}>🅰</div>
-                                                    <div>
-                                                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#111' }}>{act.name}</div>
-                                                        <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>
-                                                            {new Date(act.date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
-                                                            {act.start_time ? ` · ${act.start_time.substring(0, 5)}` : ''}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                    <span style={{ fontSize: '11px', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: '4px', padding: '3px 10px' }}>Done</span>
-                                                    <Link href={route('volunteer.attendance')} style={{
-                                                        fontSize: '11px', fontWeight: '600', color: 'white',
-                                                        background: '#CC0000', borderRadius: '4px', padding: '4px 12px', textDecoration: 'none'
-                                                    }}>View task</Link>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </main>
-
-                        {/* Right Panel */}
-                        <aside style={{ width: '260px', background: 'white', borderLeft: '1px solid #E5E7EB', padding: '20px 16px', flexShrink: 0, overflowY: 'auto' }}>
-
-                            {/* Upcoming Tasks */}
-                            <div style={{ marginBottom: '28px' }}>
-                                <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginBottom: '14px' }}>Upcoming Task</div>
-                                {upcomingActivities.length === 0 ? (
-                                    <div style={{ fontSize: '12px', color: '#D1D5DB', textAlign: 'center', padding: '12px 0' }}>No upcoming tasks</div>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        {upcomingActivities.map(act => (
-                                            <div key={act.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                                                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#22C55E', flexShrink: 0, marginTop: '5px' }} />
+                                    todayActivities.map((act, i) => (
+                                        <div key={act.id} className="task-row" style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            padding: '12px 18px',
+                                            borderBottom: i < todayActivities.length - 1 ? '1px solid #f5f5f5' : 'none',
+                                            transition: 'background 0.1s',
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <div style={{ width: '6px', height: '32px', borderRadius: '3px', background: '#CC0000', flexShrink: 0 }} />
                                                 <div>
                                                     <div style={{ fontSize: '12px', fontWeight: '500', color: '#111' }}>{act.name}</div>
-                                                    <div style={{ fontSize: '11px', color: '#9CA3AF' }}>
+                                                    <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>
                                                         {new Date(act.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                                                        {act.start_time ? ` · ${act.start_time.substring(0, 5)}` : ''}
+                                                        {act.location_name ? ` · ${act.location_name}` : ''}
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
+                                            <div style={{ display: 'flex', gap: '7px' }}>
+                                                <span style={{ fontSize: '10px', color: '#999', border: '1px solid #ebebeb', borderRadius: '5px', padding: '3px 10px', cursor: 'pointer' }}>Done</span>
+                                                <Link href={route('volunteer.attendance')} className="btn-view" style={{
+                                                    fontSize: '10px', fontWeight: '500', color: 'white',
+                                                    background: '#CC0000', borderRadius: '5px',
+                                                    padding: '3px 12px', textDecoration: 'none',
+                                                    transition: 'background 0.15s',
+                                                }}>View</Link>
+                                            </div>
+                                        </div>
+                                    ))
                                 )}
                             </div>
 
-                            {/* Recent Notifications */}
-                            <div>
-                                <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginBottom: '14px' }}>Recent Notifications</div>
-                                {attendance.length === 0 ? (
-                                    <div style={{ fontSize: '12px', color: '#D1D5DB', textAlign: 'center', padding: '12px 0' }}>No recent activity</div>
+                            {/* Upcoming */}
+                            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Upcoming</span>
+                                </div>
+                                {upcomingActivities.length === 0 ? (
+                                    <div style={{ padding: '32px', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '11px', color: '#ccc' }}>No upcoming tasks</div>
+                                    </div>
                                 ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        {attendance.slice(0, 3).map((rec, i) => (
-                                            <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                                                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#F59E0B', flexShrink: 0, marginTop: '5px' }} />
+                                    <div style={{ padding: '8px 0' }}>
+                                        {upcomingActivities.map((act, i) => (
+                                            <div key={act.id} style={{ padding: '10px 18px', borderBottom: i < upcomingActivities.length - 1 ? '1px solid #f8f8f8' : 'none', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                                <div style={{ width: '3px', height: '3px', borderRadius: '50%', background: '#CC0000', flexShrink: 0, marginTop: '6px' }} />
                                                 <div>
-                                                    <div style={{ fontSize: '12px', color: '#374151' }}>
-                                                        Attendance recorded — {rec.hours_rendered ? `${parseFloat(rec.hours_rendered).toFixed(1)}h` : 'ongoing'}
-                                                    </div>
-                                                    <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>
-                                                        {new Date(rec.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                                                    <div style={{ fontSize: '11px', fontWeight: '500', color: '#222' }}>{act.name}</div>
+                                                    <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>
+                                                        {new Date(act.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                     </div>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 )}
-                                <Link href={route('volunteer.attendance')} style={{ display: 'block', fontSize: '12px', color: '#CC0000', marginTop: '12px', textDecoration: 'none', fontWeight: '500' }}>
-                                    View all Notifications →
-                                </Link>
                             </div>
-                        </aside>
-                    </div>
+                        </div>
+
+                        {/* Recent Activity */}
+                        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Recent Activity</span>
+                                <Link href={route('volunteer.attendance')} style={{ fontSize: '10px', color: '#CC0000', fontWeight: '500', textDecoration: 'none' }}>View all →</Link>
+                            </div>
+                            {attendance.length === 0 ? (
+                                <div style={{ padding: '32px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '11px', color: '#ccc' }}>No recent activity</div>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                                    {attendance.slice(0, 4).map((rec, i) => (
+                                        <div key={i} style={{
+                                            padding: '16px 18px',
+                                            borderRight: i < 3 ? '1px solid #f5f5f5' : 'none',
+                                        }}>
+                                            <div style={{ fontSize: '10px', color: '#bbb', marginBottom: '6px' }}>
+                                                {new Date(rec.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                                            </div>
+                                            <div style={{ fontSize: '12px', fontWeight: '600', color: '#111', marginBottom: '4px' }}>
+                                                {rec.hours_rendered ? `${parseFloat(rec.hours_rendered).toFixed(1)}h` : '—'}
+                                            </div>
+                                            <div style={{ fontSize: '10px', color: '#bbb' }}>
+                                                {rec.time_in ? rec.time_in.substring(0, 5) : '—'} {rec.time_out ? `→ ${rec.time_out.substring(0, 5)}` : ''}
+                                            </div>
+                                            <div style={{
+                                                display: 'inline-block', marginTop: '8px',
+                                                fontSize: '9px', fontWeight: '600', padding: '2px 8px', borderRadius: '10px',
+                                                background: rec.hours_rendered ? '#f0fdf4' : '#fffbeb',
+                                                color: rec.hours_rendered ? '#16a34a' : '#b45309',
+                                            }}>
+                                                {rec.hours_rendered ? 'Complete' : 'Ongoing'}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                    </main>
                 </div>
             </div>
         </>
     );
 }
 
-function GridIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
+function DashIcon() {
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
 }
 function CalIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
 }
-function ChatIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
+function MsgIcon() {
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
 }
-function CheckIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>;
+function ClockIcon() {
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 }
-function FolderIcon() {
-    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>;
+function DocIcon() {
+    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 }
