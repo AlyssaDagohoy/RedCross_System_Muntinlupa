@@ -1,341 +1,419 @@
-import { useState, useRef, useEffect } from 'react';
-import * as faceapi from 'face-api.js';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { router } from '@inertiajs/react';
+import FaceRegistration from '@/Components/FaceRegistration';
 
-export default function FaceAttendance({ todayRecord, activities }) {
-    const [modelsLoaded, setModelsLoaded] = useState(false);
-    const [status, setStatus] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [cameraOn, setCameraOn] = useState(false);
-    const [mode, setMode] = useState(null);
-    const [selectedActivity, setSelectedActivity] = useState('');
-    const videoRef = useRef(null);
-    const streamRef = useRef(null);
+const OVAL_RX = 140;
+const OVAL_RY = 180;
+const OVAL_CIRCUMFERENCE = Math.PI * (3 * (OVAL_RX + OVAL_RY) - Math.sqrt((3 * OVAL_RX + OVAL_RY) * (OVAL_RX + 3 * OVAL_RY)));
+const HOLD_FRAMES_NEEDED = 12;
 
-    const alreadyTimedIn = !!todayRecord?.time_in;
-    const alreadyTimedOut = !!todayRecord?.time_out;
+function formatTime(datetime) {
+    if (!datetime) return '—';
+    return new Date(datetime).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+}
+
+function getPunctuality(timeIn, startTime) {
+    if (!timeIn || !startTime) return null;
+    const inDate = new Date(timeIn);
+    const [h, m] = startTime.split(':').map(Number);
+    const scheduled = new Date(inDate);
+    scheduled.setHours(h, m, 0, 0);
+    const diffMinutes = (inDate - scheduled) / 60000;
+    if (diffMinutes < 0) return 'early';
+    if (diffMinutes <= 15) return 'ontime';
+    return 'late';
+}
+
+function RunningTimer({ record, activity }) {
+    const [now, setNow] = useState(new Date());
 
     useEffect(() => {
-        loadModels();
-        return () => stopCamera();
+        if (!record?.time_in || record?.time_out) return;
+        const interval = setInterval(() => setNow(new Date()), 1000);
+        return () => clearInterval(interval);
+    }, [record?.time_in, record?.time_out]);
+
+    const punctuality = getPunctuality(record?.time_in, activity?.start_time);
+
+    return (
+        <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px',
+            marginBottom: '16px', flexWrap: 'wrap',
+        }}>
+            <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                    Time In
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '700', color: '#16a34a' }}>
+                    {formatTime(record?.time_in)}
+                </div>
+            </div>
+
+            <div style={{ width: '1px', height: '34px', background: '#eee' }} />
+
+            <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                    Now
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: '700', color: '#111' }}>
+                    {formatTime(now)} <span style={{ fontSize: '10px', color: '#DC2626', fontWeight: '600' }}>(running)</span>
+                </div>
+            </div>
+
+            {punctuality && (
+                <>
+                    <div style={{ width: '1px', height: '34px', background: '#eee' }} />
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                            Status
+                        </div>
+                        <div style={{
+                            fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '10px',
+                            display: 'inline-block',
+                            background: punctuality === 'early' ? '#eff6ff' : punctuality === 'ontime' ? '#f0fdf4' : '#fef2f2',
+                            color: punctuality === 'early' ? '#3B82F6' : punctuality === 'ontime' ? '#16a34a' : '#DC2626',
+                        }}>
+                            {punctuality === 'early' ? 'Early' : punctuality === 'ontime' ? 'On Time' : 'Late'}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+export default function FaceAttendance({ todayRecord, activities, faceStatus = 'none' }) {
+    const [showRegistration, setShowRegistration] = useState(false);
+    const [showCapture, setShowCapture] = useState(false);
+    const [status, setStatus] = useState(faceStatus);
+    const [selectedActivityId, setSelectedActivityId] = useState('');
+
+    if (status === 'none') {
+        return (
+            <>
+                <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                    <div style={{ fontSize: '13px', color: '#666', marginBottom: '14px', lineHeight: '1.6' }}>
+                        You need to register your face before you can time in or out. This only needs to be done once.
+                    </div>
+                    <button
+                        onClick={() => setShowRegistration(true)}
+                        style={{
+                            background: '#DC2626', color: 'white', border: 'none',
+                            padding: '11px 28px', borderRadius: '100px', fontSize: '13px', fontWeight: '600',
+                            cursor: 'pointer', fontFamily: "'Source Sans 3', sans-serif",
+                        }}
+                    >
+                        Register My Face
+                    </button>
+                </div>
+                {showRegistration && (
+                    <FaceRegistration
+                        onClose={() => setShowRegistration(false)}
+                        onRegistered={() => setStatus('approved')}
+                    />
+                )}
+            </>
+        );
+    }
+
+    if (status === 'pending') {
+        return (
+            <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '8px',
+                    background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e',
+                    borderRadius: '10px', padding: '10px 18px', fontSize: '12.5px', fontWeight: '600',
+                }}>
+                    ⏳ Face profile pending admin approval
+                </div>
+            </div>
+        );
+    }
+
+    if (status === 'rejected') {
+        return (
+            <>
+                <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                    <div style={{ fontSize: '13px', color: '#991b1b', marginBottom: '14px' }}>
+                        Your face registration was not approved. Please register again.
+                    </div>
+                    <button
+                        onClick={() => setShowRegistration(true)}
+                        style={{
+                            background: '#DC2626', color: 'white', border: 'none',
+                            padding: '11px 28px', borderRadius: '100px', fontSize: '13px', fontWeight: '600',
+                            cursor: 'pointer', fontFamily: "'Source Sans 3', sans-serif",
+                        }}
+                    >
+                        Re-Register My Face
+                    </button>
+                </div>
+                {showRegistration && (
+                    <FaceRegistration
+                        onClose={() => setShowRegistration(false)}
+                        onRegistered={() => setStatus('approved')}
+                    />
+                )}
+            </>
+        );
+    }
+
+    const isOngoing = todayRecord?.time_in && !todayRecord?.time_out;
+    const mode = isOngoing ? 'checkout' : 'checkin';
+
+    // For checkout, the activity is already fixed (whatever they timed in for)
+    const checkoutActivity = activities?.find(a => a.id === todayRecord?.activity_id) ?? activities?.[0];
+    const activeActivity = isOngoing
+        ? checkoutActivity
+        : activities?.find(a => a.id === Number(selectedActivityId));
+
+    const canProceed = isOngoing ? !!checkoutActivity : !!selectedActivityId;
+
+    return (
+        <>
+            <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                {isOngoing && <RunningTimer record={todayRecord} activity={activeActivity} />}
+
+                {!isOngoing && (
+                    <div style={{ marginBottom: '16px', maxWidth: '320px', marginLeft: 'auto', marginRight: 'auto' }}>
+                        <label style={{ display: 'block', fontSize: '11px', color: '#888', fontWeight: '600', marginBottom: '6px', textAlign: 'left' }}>
+                            Select Activity
+                        </label>
+                        <select
+                            value={selectedActivityId}
+                            onChange={e => setSelectedActivityId(e.target.value)}
+                            style={{
+                                width: '100%', padding: '9px 12px', borderRadius: '8px',
+                                border: '1px solid #ddd', fontSize: '13px', color: '#333',
+                                background: '#fff', fontFamily: "'Source Sans 3', sans-serif",
+                            }}
+                        >
+                            <option value="">— Choose an activity —</option>
+                            {activities?.map(a => (
+                                <option key={a.id} value={a.id}>
+                                    {a.name}{a.start_time ? ` (${a.start_time.slice(0, 5)})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                        {(!activities || activities.length === 0) && (
+                            <div style={{ fontSize: '11.5px', color: '#bbb', marginTop: '6px' }}>
+                                No activities assigned to you today.
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div style={{ fontSize: '13px', color: '#666', marginBottom: '14px' }}>
+                    {isOngoing ? 'Ready to time out.' : `Ready to ${mode === 'checkin' ? 'time in' : 'time out'}.`}
+                </div>
+                <button
+                    onClick={() => setShowCapture(true)}
+                    disabled={!canProceed}
+                    style={{
+                        background: canProceed ? '#DC2626' : '#f0a8a8', color: 'white', border: 'none',
+                        padding: '12px 32px', borderRadius: '100px', fontSize: '13.5px', fontWeight: '600',
+                        cursor: canProceed ? 'pointer' : 'not-allowed', fontFamily: "'Source Sans 3', sans-serif",
+                    }}
+                >
+                    {mode === 'checkin' ? 'Time In' : 'Time Out'}
+                </button>
+            </div>
+
+            {showCapture && (
+                <AttendanceCapture
+                    mode={mode}
+                    activityId={activeActivity?.id}
+                    onClose={() => setShowCapture(false)}
+                    onSuccess={() => { setShowCapture(false); router.reload(); }}
+                />
+            )}
+        </>
+    );
+}
+
+function dist(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
+    const videoRef = useRef(null);
+    const streamRef = useRef(null);
+    const holdCounter = useRef(0);
+
+    const [modelsReady, setModelsReady] = useState(!!window.faceapi?.nets?.tinyFaceDetector?.isLoaded);
+    const [ringProgress, setRingProgress] = useState(0);
+    const [ringColor, setRingColor] = useState('#e5e5e5');
+    const [statusText, setStatusText] = useState('Position your face in the oval');
+    const [error, setError] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        (async () => {
+            if (!window.faceapi) {
+                await new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
+                    s.onload = resolve;
+                    s.onerror = reject;
+                    document.body.appendChild(s);
+                });
+            }
+            const MODEL_URL = '/models';
+            await Promise.all([
+                window.faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                window.faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                window.faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+            ]);
+            setModelsReady(true);
+        })().catch(() => setError('Could not load face detection models.'));
     }, []);
 
     useEffect(() => {
-        if (cameraOn) startCamera();
-        else stopCamera();
-        return () => stopCamera();
-    }, [cameraOn]);
+        if (!modelsReady) return;
+        (async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 640 } });
+                streamRef.current = stream;
+                if (videoRef.current) videoRef.current.srcObject = stream;
+            } catch {
+                setError('Camera access denied. Please allow camera permissions.');
+            }
+        })();
+        return () => {
+            if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+        };
+    }, [modelsReady]);
 
-    const loadModels = async () => {
-        try {
-            await Promise.all([
-                faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-                faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-                faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-            ]);
-            setModelsLoaded(true);
-        } catch (err) {
-            setStatus('Failed to load face models.');
-        }
-    };
+    useEffect(() => {
+        if (!modelsReady || submitting) return;
+        let cancelled = false;
 
-    const startCamera = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            streamRef.current = stream;
-            if (videoRef.current) videoRef.current.srcObject = stream;
-        } catch {
-            setStatus('Camera access denied.');
-            setCameraOn(false);
-        }
-    };
+        const interval = setInterval(async () => {
+            if (cancelled || !videoRef.current) return;
+            const options = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+            const result = await window.faceapi
+                .detectSingleFace(videoRef.current, options)
+                .withFaceLandmarks()
+                .withFaceDescriptor();
 
-    const stopCamera = () => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-        }
-        if (videoRef.current) videoRef.current.srcObject = null;
-    };
+            if (!result) {
+                holdCounter.current = 0;
+                setRingProgress(0);
+                setRingColor('#e5e5e5');
+                setStatusText('Position your face in the oval');
+                return;
+            }
 
-    const getCsrfToken = () => {
-        const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
-        return match ? decodeURIComponent(match[1]) : '';
-    };
+            holdCounter.current += 1;
+            setRingColor('#DC2626');
+            setStatusText('Hold still...');
+            setRingProgress(Math.min(1, holdCounter.current / HOLD_FRAMES_NEEDED));
 
-    const captureFaceDescriptor = async () => {
-        if (!videoRef.current) return null;
-        const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-        if (!detection) return null;
-        return Array.from(detection.descriptor);
-    };
+            if (holdCounter.current >= HOLD_FRAMES_NEEDED) {
+                cancelled = true;
+                clearInterval(interval);
+                setRingColor('#16a34a');
+                setStatusText('Verifying...');
+                setSubmitting(true);
 
-    const getLocation = () => new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-            pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-            () => reject(new Error('Location access denied.'))
-        );
-    });
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        router.post(route(mode === 'checkin' ? 'volunteer.face.timein' : 'volunteer.face.timeout'), {
+                            face_descriptor: Array.from(result.descriptor),
+                            latitude: pos.coords.latitude,
+                            longitude: pos.coords.longitude,
+                            activity_id: activityId ?? null,
+                        }, {
+                            onSuccess: () => onSuccess(),
+                            onError: (errors) => {
+                                console.error('Time in/out errors:', errors);
+                                setError(Object.values(errors)[0] || 'Face not recognized or out of range. Please try again.');
+                                setRingColor('#DC2626');
+                                setSubmitting(false);
+                                holdCounter.current = 0;
+                                setRingProgress(0);
+                            },
+                        });
+                    },
+                    () => {
+                        setError('Location access is required to time in/out.');
+                        setSubmitting(false);
+                        holdCounter.current = 0;
+                        setRingProgress(0);
+                    }
+                );
+            }
+        }, 180);
 
-    const handleRegister = async () => {
-        setLoading(true);
-        setStatus('Scanning face...');
-        const descriptor = await captureFaceDescriptor();
-        if (!descriptor) {
-            setStatus('No face detected. Please look at the camera.');
-            setLoading(false);
-            return;
-        }
-        try {
-            const res = await fetch(route('volunteer.face.register'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': getCsrfToken() },
-                body: JSON.stringify({ face_descriptor: descriptor }),
-            });
-            const data = await res.json();
-            setStatus(data.message);
-            if (res.ok) { setCameraOn(false); setMode(null); }
-        } catch {
-            setStatus('Something went wrong.');
-        }
-        setLoading(false);
-    };
+        return () => { cancelled = true; clearInterval(interval); };
+    }, [modelsReady, submitting, mode, activityId, onSuccess]);
 
-    const handleTimeIn = async () => {
-        if (!selectedActivity) { setStatus('Please select an activity.'); return; }
-        setLoading(true);
-        setStatus('Scanning face...');
-        const descriptor = await captureFaceDescriptor();
-        if (!descriptor) {
-            setStatus('No face detected. Please look at the camera.');
-            setLoading(false);
-            return;
-        }
-        setStatus('Checking location...');
-        let location;
-        try {
-            location = await getLocation();
-        } catch (e) {
-            setStatus(e.message);
-            setLoading(false);
-            return;
-        }
-        try {
-            const res = await fetch(route('volunteer.face.timein'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': getCsrfToken() },
-                body: JSON.stringify({ activity_id: selectedActivity, face_descriptor: descriptor, ...location }),
-            });
-            const data = await res.json();
-            setStatus(data.message);
-            if (res.ok) { stopCamera(); setCameraOn(false); setMode(null); setTimeout(() => window.location.reload(), 1500); }
-        } catch {
-            setStatus('Something went wrong.');
-        }
-        setLoading(false);
-    };
-
-    const handleTimeOut = async () => {
-        if (!selectedActivity) { setStatus('Please select an activity.'); return; }
-        setLoading(true);
-        setStatus('Scanning face...');
-        const descriptor = await captureFaceDescriptor();
-        if (!descriptor) {
-            setStatus('No face detected. Please look at the camera.');
-            setLoading(false);
-            return;
-        }
-        setStatus('Checking location...');
-        let location;
-        try {
-            location = await getLocation();
-        } catch (e) {
-            setStatus(e.message);
-            setLoading(false);
-            return;
-        }
-        try {
-            const res = await fetch(route('volunteer.face.timeout'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': getCsrfToken() },
-                body: JSON.stringify({ activity_id: selectedActivity, face_descriptor: descriptor, ...location }),
-            });
-            const data = await res.json();
-            setStatus(data.message);
-            if (res.ok) { stopCamera(); setCameraOn(false); setMode(null); setTimeout(() => window.location.reload(), 1500); }
-        } catch {
-            setStatus('Something went wrong.');
-        }
-        setLoading(false);
-    };
-
-    const startMode = (m) => {
-        setMode(m);
-        setStatus('');
-        setCameraOn(true);
-    };
-
-    const cancelMode = () => {
-        setMode(null);
-        setCameraOn(false);
-        setStatus('');
-        stopCamera();
-    };
+    const dashOffset = OVAL_CIRCUMFERENCE * (1 - ringProgress);
 
     return (
-        <div style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: '#ffffff',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            fontFamily: "'Source Sans 3', sans-serif",
+        }}>
+            <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Source+Sans+3:wght@300;400;600&display=swap" rel="stylesheet" />
 
-            {/* Today's Stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '18px' }}>
-                {[
-                    { label: 'Time In', value: todayRecord?.time_in ? new Date(todayRecord.time_in).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : '— : —', color: '#16a34a' },
-                    { label: 'Time Out', value: todayRecord?.time_out ? new Date(todayRecord.time_out).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : '— : —', color: '#CC0000' },
-                    { label: 'Hours Today', value: todayRecord?.hours_rendered ? parseFloat(todayRecord.hours_rendered).toFixed(2) : '0.00', color: '#111' },
-                ].map(({ label, value, color }) => (
-                    <div key={label} style={{ textAlign: 'center', padding: '14px 10px', background: '#f9f9f9', borderRadius: '8px', border: '1px solid #f0f0f0' }}>
-                        <div style={{ fontSize: '9px', color: '#bbb', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: '600', marginBottom: '6px' }}>{label}</div>
-                        <div style={{ fontSize: '16px', fontWeight: '700', color }}>{value}</div>
-                    </div>
-                ))}
+            <button
+                onClick={() => { if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop()); onClose(); }}
+                aria-label="Close"
+                style={{
+                    position: 'absolute', top: '20px', right: '24px',
+                    width: '36px', height: '36px', borderRadius: '50%',
+                    background: '#fff3f3', border: '1px solid #ffe2e2',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', color: '#DC2626',
+                }}
+            >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+
+            <div style={{ textAlign: 'center', marginBottom: '18px' }}>
+                <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: '18px', fontWeight: '700', color: '#111', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {mode === 'checkin' ? 'Time In' : 'Time Out'}
+                </div>
+                <div style={{ fontSize: '13px', color: '#999', marginTop: '4px', fontWeight: '300' }}>
+                    {statusText}
+                </div>
             </div>
 
-            {/* Activity Selector */}
-            {!alreadyTimedOut && (
-                <div style={{ marginBottom: '14px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
-                        Select Activity
-                    </div>
-                    <select
-                        value={selectedActivity}
-                        onChange={e => setSelectedActivity(e.target.value)}
-                        style={{
-                            width: '100%', padding: '9px 12px',
-                            border: '1px solid #ebebeb', borderRadius: '8px',
-                            fontSize: '12px', color: '#333', background: 'white',
-                            outline: 'none', cursor: 'pointer',
-                        }}
-                    >
-                        <option value="">-- Select your assigned activity --</option>
-                        {activities?.map(a => (
-                            <option key={a.id} value={a.id}>{a.name} — {a.location_name} ({a.date})</option>
-                        ))}
-                    </select>
+            {error && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '10px', padding: '10px 16px', fontSize: '12px', marginBottom: '16px', maxWidth: '320px', textAlign: 'center' }}>
+                    {error}
                 </div>
             )}
 
-            {/* Models loading */}
-            {!modelsLoaded && (
-                <div style={{ fontSize: '11px', color: '#bbb', marginBottom: '12px' }}>
-                    Loading face recognition models...
-                </div>
-            )}
-
-            {/* Camera */}
-            {cameraOn && (
-                <div style={{ marginBottom: '14px', textAlign: 'center' }}>
+            <div style={{ position: 'relative', width: `${OVAL_RX * 2 + 24}px`, height: `${OVAL_RY * 2 + 24}px` }}>
+                <div style={{
+                    position: 'absolute', inset: '12px',
+                    borderRadius: '50%', overflow: 'hidden', background: '#000',
+                }}>
                     <video
                         ref={videoRef}
-                        autoPlay
-                        muted
-                        style={{ width: '100%', maxWidth: '380px', borderRadius: '8px', border: '1.5px solid #ebebeb' }}
+                        autoPlay muted playsInline
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
                     />
                 </div>
-            )}
-
-            {/* Status */}
-            {status && (
-                <div style={{
-                    padding: '9px 14px', borderRadius: '7px', marginBottom: '14px', fontSize: '11px', fontWeight: '500',
-                    background: (status.toLowerCase().includes('success') || status.toLowerCase().includes('timed') || status.toLowerCase().includes('registered')) ? '#f0fdf4' : '#fef2f2',
-                    color: (status.toLowerCase().includes('success') || status.toLowerCase().includes('timed') || status.toLowerCase().includes('registered')) ? '#166534' : '#991b1b',
-                    border: (status.toLowerCase().includes('success') || status.toLowerCase().includes('timed') || status.toLowerCase().includes('registered')) ? '1px solid #bbf7d0' : '1px solid #fecaca',
-                }}>
-                    {status}
-                </div>
-            )}
-
-            {/* Action Buttons */}
-            {!mode ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <button
-                        onClick={() => startMode('timein')}
-                        disabled={alreadyTimedIn || !modelsLoaded}
-                        style={{
-                            padding: '10px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: '600',
-                            cursor: alreadyTimedIn || !modelsLoaded ? 'not-allowed' : 'pointer',
-                            background: alreadyTimedIn ? '#f5f5f5' : '#16a34a',
-                            color: alreadyTimedIn ? '#bbb' : 'white',
-                            transition: 'background 0.15s',
-                        }}
-                    >
-                        {alreadyTimedIn ? 'Timed In' : 'Face Time In'}
-                    </button>
-                    <button
-                        onClick={() => startMode('timeout')}
-                        disabled={!alreadyTimedIn || alreadyTimedOut || !modelsLoaded}
-                        style={{
-                            padding: '10px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: '600',
-                            cursor: (!alreadyTimedIn || alreadyTimedOut) ? 'not-allowed' : 'pointer',
-                            background: alreadyTimedOut ? '#f5f5f5' : !alreadyTimedIn ? '#f5f5f5' : '#CC0000',
-                            color: (alreadyTimedOut || !alreadyTimedIn) ? '#bbb' : 'white',
-                            transition: 'background 0.15s',
-                        }}
-                    >
-                        {alreadyTimedOut ? 'Timed Out' : 'Face Time Out'}
-                    </button>
-                </div>
-            ) : mode !== 'register' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <button
-                        onClick={cancelMode}
-                        style={{ padding: '10px', borderRadius: '7px', border: '1px solid #ebebeb', cursor: 'pointer', background: 'white', color: '#555', fontSize: '11px', fontWeight: '600' }}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={mode === 'timein' ? handleTimeIn : handleTimeOut}
-                        disabled={loading || !modelsLoaded}
-                        style={{
-                            padding: '10px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: '600',
-                            cursor: loading ? 'not-allowed' : 'pointer',
-                            background: '#CC0000', color: 'white',
-                        }}
-                    >
-                        {loading ? 'Processing...' : 'Capture & Submit'}
-                    </button>
-                </div>
-            ) : null}
-
-            {/* Register Face */}
-            <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid #f5f5f5' }}>
-                <div style={{ fontSize: '9px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#bbb', marginBottom: '8px' }}>
-                    First time? Register your face
-                </div>
-                {mode === 'register' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <button onClick={cancelMode} style={{ padding: '9px', borderRadius: '7px', border: '1px solid #ebebeb', cursor: 'pointer', background: 'white', color: '#555', fontSize: '11px', fontWeight: '600' }}>
-                            Cancel
-                        </button>
-                        <button onClick={handleRegister} disabled={loading || !modelsLoaded} style={{ padding: '9px', borderRadius: '7px', border: 'none', cursor: 'pointer', background: '#111', color: 'white', fontSize: '11px', fontWeight: '600' }}>
-                            {loading ? 'Registering...' : 'Capture Face'}
-                        </button>
-                    </div>
-                ) : (
-                    <button
-                        onClick={() => startMode('register')}
-                        disabled={!modelsLoaded}
-                        style={{
-                            width: '100%', padding: '9px', borderRadius: '7px', border: 'none',
-                            cursor: modelsLoaded ? 'pointer' : 'not-allowed',
-                            background: '#111', color: 'white', fontSize: '11px', fontWeight: '600',
-                        }}
-                    >
-                        Register Face
-                    </button>
-                )}
+                <svg width={OVAL_RX * 2 + 24} height={OVAL_RY * 2 + 24} style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)' }}>
+                    <ellipse cx={OVAL_RX + 12} cy={OVAL_RY + 12} rx={OVAL_RX} ry={OVAL_RY} fill="none" stroke="#f0f0f0" strokeWidth="6" />
+                    <ellipse
+                        cx={OVAL_RX + 12} cy={OVAL_RY + 12} rx={OVAL_RX} ry={OVAL_RY}
+                        fill="none" stroke={ringColor} strokeWidth="6" strokeLinecap="round"
+                        strokeDasharray={OVAL_CIRCUMFERENCE}
+                        strokeDashoffset={dashOffset}
+                        style={{ transition: 'stroke-dashoffset 0.15s linear, stroke 0.2s' }}
+                    />
+                </svg>
             </div>
+
+            {!modelsReady && (
+                <div style={{ marginTop: '18px', fontSize: '12px', color: '#bbb' }}>Loading camera model...</div>
+            )}
         </div>
     );
 }

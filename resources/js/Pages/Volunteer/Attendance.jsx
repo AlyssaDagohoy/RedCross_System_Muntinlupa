@@ -198,7 +198,7 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, to
                                 </span>
                             </div>
                             <div style={{ padding: '16px 18px' }}>
-                                <FaceAttendance todayRecord={todayRecord} activities={activities} />
+                                <FaceAttendance todayRecord={todayRecord} activities={activities} faceStatus={auth.user.face_status ?? 'none'} />
                             </div>
                         </div>
 

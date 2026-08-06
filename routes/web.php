@@ -2,11 +2,13 @@
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\VolunteerController;
+use App\Http\Controllers\NewsController;
 use App\Http\Controllers\Volunteer\ProfileController as VolunteerProfileController;
 use App\Http\Controllers\Volunteer\AttendanceController;
 use App\Http\Controllers\Volunteer\FaceAttendanceController;
 use App\Http\Controllers\Volunteer\DocumentController;
 use App\Http\Controllers\Volunteer\CommunicationController;
+use App\Http\Controllers\Admin\ProfileController as AdminProfileController;
 use App\Http\Controllers\WebAuthn\WebAuthnRegisterController;
 use App\Http\Controllers\WebAuthn\WebAuthnAttendanceController;
 use App\Http\Controllers\Admin\ActivityController;
@@ -24,6 +26,24 @@ Route::get('/', function () {
         'phpVersion' => PHP_VERSION,
     ]);
 });
+
+Route::get('/about', function () {
+    return Inertia::render('About');
+})->name('about');
+
+Route::get('/contact', function () {
+    return Inertia::render('Contact');
+})->name('contact');
+
+Route::get('/volunteer', function () {
+    return Inertia::render('Volunteer');
+})->name('volunteer');
+
+Route::get('/donate', function () {
+    return Inertia::render('Donate');
+})->name('donate');
+
+Route::get('/news/{slug}', [NewsController::class, 'show'])->name('news.show');
 
 // Admin Routes
 Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
@@ -64,6 +84,11 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::post('/communication/reply/{sentEmail}', [AdminCommunicationController::class, 'reply'])->name('communication.reply');
     Route::post('/communication/announce', [AdminCommunicationController::class, 'announce'])->name('communication.announce');
     Route::delete('/communication/announcement/{announcement}', [AdminCommunicationController::class, 'deleteAnnouncement'])->name('communication.announcement.delete');
+
+    // Admin Profile
+    Route::get('/profile', [AdminProfileController::class, 'edit'])->name('profile');
+    Route::patch('/profile', [AdminProfileController::class, 'update'])->name('profile.update');
+    Route::patch('/profile/password', [AdminProfileController::class, 'updatePassword'])->name('profile.password');
 });
 
 // Volunteer Routes
@@ -143,6 +168,7 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
 
     Route::get('/profile', [VolunteerProfileController::class, 'edit'])->name('profile');
     Route::patch('/profile', [VolunteerProfileController::class, 'update'])->name('profile.update');
+    Route::patch('/profile/password', [VolunteerProfileController::class, 'updatePassword'])->name('profile.password');
 
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance');
     Route::post('/attendance/time-in', [AttendanceController::class, 'timeIn'])->name('attendance.timein');
@@ -153,13 +179,14 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
     Route::post('/face/timein', [FaceAttendanceController::class, 'timeIn'])->name('face.timein');
     Route::post('/face/timeout', [FaceAttendanceController::class, 'timeOut'])->name('face.timeout');
 
-    // WebAuthn Fingerprint (keeping for reference)
+    // WebAuthn Fingerprint
     Route::post('/webauthn/register/options', [WebAuthnRegisterController::class, 'options'])->name('webauthn.register.options');
     Route::post('/webauthn/register', [WebAuthnRegisterController::class, 'register'])->name('webauthn.register');
     Route::post('/webauthn/timein/options', [WebAuthnAttendanceController::class, 'options'])->name('webauthn.timein.options');
     Route::post('/webauthn/timein', [WebAuthnAttendanceController::class, 'timeIn'])->name('webauthn.timein');
     Route::post('/webauthn/timeout/options', [WebAuthnAttendanceController::class, 'options'])->name('webauthn.timeout.options');
     Route::post('/webauthn/timeout', [WebAuthnAttendanceController::class, 'timeOut'])->name('webauthn.timeout');
+
 });
 
 Route::middleware('auth')->group(function () {

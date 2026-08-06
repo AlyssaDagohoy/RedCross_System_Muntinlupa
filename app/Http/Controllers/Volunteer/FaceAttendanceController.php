@@ -19,9 +19,10 @@ class FaceAttendanceController extends Controller
         $user = auth()->user();
         $user->update([
             'face_descriptor' => json_encode($request->face_descriptor),
+            'face_status' => 'approved',
         ]);
 
-        return response()->json(['message' => 'Face registered successfully!']);
+        return back()->with('message', 'Face registered successfully!');
     }
 
     public function timeIn(Request $request)
@@ -35,21 +36,18 @@ class FaceAttendanceController extends Controller
 
         $user = auth()->user();
 
-        // Check face descriptor exists
         if (!$user->face_descriptor) {
-            return response()->json(['message' => 'Face not registered. Please register your face first.'], 422);
+            return back()->withErrors(['face' => 'Face not registered. Please register your face first.']);
         }
 
-        // Check face match
         $stored = json_decode($user->face_descriptor, true);
         $incoming = $request->face_descriptor;
         $distance = $this->euclideanDistance($stored, $incoming);
 
         if ($distance > 0.6) {
-            return response()->json(['message' => 'Face not recognized. Please try again.'], 422);
+            return back()->withErrors(['face' => 'Face not recognized. Please try again.']);
         }
 
-        // Check location
         $activity = Activity::findOrFail($request->activity_id);
         $dist = $this->haversineDistance(
             $request->latitude, $request->longitude,
@@ -57,19 +55,16 @@ class FaceAttendanceController extends Controller
         );
 
         if ($dist > $activity->radius_meters) {
-            return response()->json([
-                'message' => "You are too far from the activity location. You are {$dist}m away. Allowed: {$activity->radius_meters}m."
-            ], 422);
+            return back()->withErrors(['face' => "You are too far from the activity location. You are {$dist}m away. Allowed: {$activity->radius_meters}m."]);
         }
 
-        // Check already timed in
         $existing = Attendance::where('user_id', $user->id)
             ->where('activity_id', $request->activity_id)
             ->whereDate('date', today())
             ->first();
 
         if ($existing) {
-            return response()->json(['message' => 'Already timed in for this activity today.'], 422);
+            return back()->withErrors(['face' => 'Already timed in for this activity today.']);
         }
 
         Attendance::create([
@@ -81,7 +76,7 @@ class FaceAttendanceController extends Controller
             'longitude'   => $request->longitude,
         ]);
 
-        return response()->json(['message' => 'Time in recorded successfully!']);
+        return back()->with('message', 'Time in recorded successfully!');
     }
 
     public function timeOut(Request $request)
@@ -95,16 +90,14 @@ class FaceAttendanceController extends Controller
 
         $user = auth()->user();
 
-        // Check face match
         $stored = json_decode($user->face_descriptor, true);
         $incoming = $request->face_descriptor;
         $distance = $this->euclideanDistance($stored, $incoming);
 
         if ($distance > 0.6) {
-            return response()->json(['message' => 'Face not recognized. Please try again.'], 422);
+            return back()->withErrors(['face' => 'Face not recognized. Please try again.']);
         }
 
-        // Check location
         $activity = Activity::findOrFail($request->activity_id);
         $dist = $this->haversineDistance(
             $request->latitude, $request->longitude,
@@ -112,9 +105,7 @@ class FaceAttendanceController extends Controller
         );
 
         if ($dist > $activity->radius_meters) {
-            return response()->json([
-                'message' => "You are too far from the activity location. You are {$dist}m away. Allowed: {$activity->radius_meters}m."
-            ], 422);
+            return back()->withErrors(['face' => "You are too far from the activity location. You are {$dist}m away. Allowed: {$activity->radius_meters}m."]);
         }
 
         $record = Attendance::where('user_id', $user->id)
@@ -123,18 +114,32 @@ class FaceAttendanceController extends Controller
             ->first();
 
         if (!$record || $record->time_out) {
-            return response()->json(['message' => 'No valid time-in found for this activity.'], 422);
+            return back()->withErrors(['face' => 'No valid time-in found for this activity.']);
         }
 
         $timeOut = Carbon::now();
         $hours = round($record->time_in->diffInMinutes($timeOut) / 60, 2);
 
+        $leftEarly = false;
+        if ($activity->end_time) {
+            $scheduledEnd = Carbon::parse($activity->end_time)->setDateTime(
+                $timeOut->year, $timeOut->month, $timeOut->day,
+                Carbon::parse($activity->end_time)->hour,
+                Carbon::parse($activity->end_time)->minute
+            );
+            $leftEarly = $timeOut->lt($scheduledEnd);
+        }
+
         $record->update([
             'time_out'       => $timeOut,
             'hours_rendered' => $hours,
+            'left_early'     => $leftEarly,
         ]);
 
-        return response()->json(['message' => "Time out recorded! Hours rendered: {$hours}"]);
+        return back()->with('message', $leftEarly
+            ? "Time out recorded (left early). Hours rendered: {$hours}"
+            : "Time out recorded! Hours rendered: {$hours}"
+        );
     }
 
     private function euclideanDistance(array $a, array $b): float

@@ -26,6 +26,7 @@ class User extends Authenticatable
         'emergency_contact_phone',
         'photo',
         'face_descriptor',
+        'face_status',
     ];
 
     protected function casts(): array
