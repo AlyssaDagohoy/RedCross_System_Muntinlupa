@@ -8,6 +8,11 @@ export default function Edit({ auth, mustVerifyEmail, status, userRole }) {
         email: user.email || '',
         phone: user.phone || '',
         address: user.address || '',
+        birthdate: user.birthdate || '',
+        gender: user.gender || '',
+        emergency_contact_name: user.emergency_contact_name || '',
+        emergency_contact_phone: user.emergency_contact_phone || '',
+        emergency_contact_relationship: user.emergency_contact_relationship || '',
     });
 
     const submit = (e) => {
@@ -98,7 +103,7 @@ export default function Edit({ auth, mustVerifyEmail, status, userRole }) {
                     letter-spacing: 0.5px; text-transform: uppercase;
                     color: #999; margin-bottom: 8px;
                 }
-                .form-field input, .form-field textarea {
+                .form-field input, .form-field textarea, .form-field select {
                     width: 100%;
                     font-family: 'Source Sans 3', sans-serif;
                     font-size: 14px;
@@ -110,7 +115,7 @@ export default function Edit({ auth, mustVerifyEmail, status, userRole }) {
                     outline: none;
                     transition: border-color 0.2s, box-shadow 0.2s;
                 }
-                .form-field input:focus, .form-field textarea:focus {
+                .form-field input:focus, .form-field textarea:focus, .form-field select:focus {
                     border-color: #DC2626;
                     box-shadow: 0 0 0 3px rgba(220,38,38,0.1);
                 }
@@ -136,6 +141,14 @@ export default function Edit({ auth, mustVerifyEmail, status, userRole }) {
                     font-size: 11px; font-weight: 700;
                     letter-spacing: 0.6px; text-transform: uppercase;
                     padding: 6px 14px; border-radius: 100px;
+                }
+
+                .section-label {
+                    font-family: 'Source Sans 3', sans-serif;
+                    font-size: 11px; font-weight: 600;
+                    letter-spacing: 2px; text-transform: uppercase;
+                    color: #DC2626;
+                    margin: 8px 0 4px;
                 }
             `}</style>
 
@@ -296,6 +309,76 @@ export default function Edit({ auth, mustVerifyEmail, status, userRole }) {
                                     style={{ resize: 'vertical', fontFamily: 'inherit' }}
                                 />
                                 {errors.address && <div className="error">{errors.address}</div>}
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                                <div className="form-field">
+                                    <label htmlFor="birthdate">Birthdate</label>
+                                    <input
+                                        id="birthdate"
+                                        type="date"
+                                        value={data.birthdate}
+                                        onChange={e => setData('birthdate', e.target.value)}
+                                        autoComplete="bday"
+                                    />
+                                    {errors.birthdate && <div className="error">{errors.birthdate}</div>}
+                                </div>
+
+                                <div className="form-field">
+                                    <label htmlFor="gender">Gender</label>
+                                    <select
+                                        id="gender"
+                                        value={data.gender}
+                                        onChange={e => setData('gender', e.target.value)}
+                                    >
+                                        <option value="">Select...</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="other">Other</option>
+                                        <option value="prefer_not_to_say">Prefer not to say</option>
+                                    </select>
+                                    {errors.gender && <div className="error">{errors.gender}</div>}
+                                </div>
+                            </div>
+
+                            <div className="section-label">Emergency Contact</div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                                <div className="form-field">
+                                    <label htmlFor="emergency_contact_name">Emergency Contact Name</label>
+                                    <input
+                                        id="emergency_contact_name"
+                                        type="text"
+                                        placeholder="Full name"
+                                        value={data.emergency_contact_name}
+                                        onChange={e => setData('emergency_contact_name', e.target.value)}
+                                    />
+                                    {errors.emergency_contact_name && <div className="error">{errors.emergency_contact_name}</div>}
+                                </div>
+
+                                <div className="form-field">
+                                    <label htmlFor="emergency_contact_relationship">Relationship</label>
+                                    <input
+                                        id="emergency_contact_relationship"
+                                        type="text"
+                                        placeholder="e.g. Spouse, Parent, Sibling"
+                                        value={data.emergency_contact_relationship}
+                                        onChange={e => setData('emergency_contact_relationship', e.target.value)}
+                                    />
+                                    {errors.emergency_contact_relationship && <div className="error">{errors.emergency_contact_relationship}</div>}
+                                </div>
+                            </div>
+
+                            <div className="form-field">
+                                <label htmlFor="emergency_contact_phone">Emergency Contact Number</label>
+                                <input
+                                    id="emergency_contact_phone"
+                                    type="text"
+                                    placeholder="+63 9XX-XXX-XXXX"
+                                    value={data.emergency_contact_phone}
+                                    onChange={e => setData('emergency_contact_phone', e.target.value)}
+                                />
+                                {errors.emergency_contact_phone && <div className="error">{errors.emergency_contact_phone}</div>}
                             </div>
 
                             {mustVerifyEmail && user.email_verified_at === null && (

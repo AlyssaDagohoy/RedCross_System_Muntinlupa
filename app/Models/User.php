@@ -23,6 +23,7 @@ class User extends Authenticatable
         'birthdate',
         'gender',
         'emergency_contact_name',
+        'emergency_contact_relationship',
         'emergency_contact_phone',
         'photo',
         'face_descriptor',
@@ -34,6 +35,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'birthdate' => 'date',
         ];
     }
 
@@ -50,5 +52,16 @@ class User extends Authenticatable
     public function documents()
     {
         return $this->hasMany(Document::class);
+    }
+
+public function isProfileComplete(): bool
+    {
+        return filled($this->phone)
+            && filled($this->address)
+            && filled($this->birthdate)
+            && filled($this->gender)
+            && filled($this->emergency_contact_name)
+            && filled($this->emergency_contact_relationship)
+            && filled($this->emergency_contact_phone);
     }
 }

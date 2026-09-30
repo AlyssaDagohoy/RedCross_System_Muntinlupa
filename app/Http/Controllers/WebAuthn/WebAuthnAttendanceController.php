@@ -34,9 +34,10 @@ class WebAuthnAttendanceController extends Controller
             }
 
             Attendance::create([
-                'user_id' => $user->id,
-                'date'    => today(),
-                'time_in' => Carbon::now(),
+                'user_id'           => $user->id,
+                'date'              => today(),
+                'time_in'           => Carbon::now(),
+                'attendance_method' => 'fingerprint',
             ]);
 
             return response()->json(['message' => 'Time in recorded!']);

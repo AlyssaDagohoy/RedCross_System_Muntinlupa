@@ -1,0 +1,230 @@
+﻿    const cardStyle = { background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' };
+    const labelStyle = { fontSize: '11px', fontWeight: '600', color: '#888', display: 'block', marginBottom: '6px' };
+    const fieldStyle = { width: '100%', padding: '9px 12px', border: '1px solid #ddd', borderRadius: '8px', fontSize: '12px', background: 'white', color: '#111', fontFamily: 'inherit' };
+    const sectionTitle = { fontSize: '12px', fontWeight: '600', color: '#111' };
+    const subheading = { fontSize: '13px', fontWeight: '700', color: '#111' };
+
+    return (
+        <VolunteerShell active="file201" title="201 File">
+
+            <style>{`
+                .f201-row:hover { background: #fafafa; }
+                .f201-name-link:hover { text-decoration: underline !important; }
+                .f201-icon-btn:hover { background: #f2f2f2 !important; }
+                .f201-folder:hover { border-color: #d5d5d5 !important; }
+            `}</style>
+
+            {/* Header */}
+            <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '14px', fontWeight: '700', color: '#111' }}>201 File</div>
+                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>Your approved files, folders, and document requests â€” all in one place.</div>
+            </div>
+
+            {/* ============================================================ */}
+            {/* 1. APPROVED / REJECTED (tabbed)                               */}
+            {/* ============================================================ */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <span style={subheading}>Approved Files &amp; Folders</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                <StatusTabButton active={statusTab === 'approved'} onClick={() => setStatusTab('approved')} label="Approved" count={unfiled.length} activeColor="#16a34a" />
+                <StatusTabButton active={statusTab === 'rejected'} onClick={() => setStatusTab('rejected')} label="Rejected" count={rejectedUploads.length} activeColor="#cc0000" />
+            </div>
+
+            {statusTab === 'approved' && (
+                <>
+                    <DataTable
+                        cardStyle={cardStyle}
+                        empty="Walang bagong approved file. Kapag na-approve ang dokumento mo, lalabas dito para mailipat mo sa folder."
+                        columns={['Document Name', 'Files']}
+                        rowOnClick={unfiled.map(d => d.is_group
+                            ? () => setApprovedFilesModal(d)
+                            : () => { const href = approvedViewHref(d); if (href) window.open(href, '_blank', 'noopener'); }
+                        )}
+                        rows={unfiled.map(d => d.is_group ? [
+                            <div>
+                                <strong style={{ color: '#111', fontWeight: 600 }}>{d.name}</strong>
+                                <div style={{ fontSize: '10.5px', color: '#999', marginTop: '4px' }}>{fmtDate(d.date)}</div>
+                            </div>,
+                            <button onClick={(e) => { e.stopPropagation(); setApprovedFilesModal(d); }} style={{
+                                fontSize: '10.5px', padding: '5px 10px', borderRadius: '6px', border: 'none',
+                                background: '#CC0000', color: 'white', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                            }}>
+                                View {d.files.length} File{d.files.length !== 1 ? 's' : ''}
+                            </button>,
+                        ] : [
+                            <div>
+                                <FileNameLink doc={d} />
+                                <div style={{ fontSize: '10.5px', color: '#999', marginTop: '4px' }}>{fmtDate(d.date)}</div>
+                            </div>,
+                            <DownloadButton href={approvedDownloadHref(d)} />,
+                        ])}
+                        keys={unfiled.map(d => d.id)}
+                    />
+                    {unfiled.length > 0 && folderList.length === 0 && (
+                        <div style={{ fontSize: '10.5px', color: '#b45309', marginTop: '8px' }}>
+                            Wala ka pang folder. Gumawa muna sa "My Folders" sa baba para may mapaglipatan.
+                        </div>
+                    )}
+
+                    {/* My Folders */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '24px 0 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                            <span
+                                onClick={() => navigateToFolder(null)}
+                                style={{ ...sectionTitle, cursor: openFolder ? 'pointer' : 'default', color: openFolder ? '#888' : '#111' }}
+                            >My Folders</span>
+                            {breadcrumb.map((f, i) => (
+                                <span key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ color: '#ccc', fontSize: '11px' }}>/</span>
+                                    <span
+                                        onClick={() => i < breadcrumb.length - 1 && navigateToFolder(f.id)}
+                                        style={{
+                                            ...sectionTitle,
+                                            cursor: i < breadcrumb.length - 1 ? 'pointer' : 'default',
+                                            color: i < breadcrumb.length - 1 ? '#888' : '#111',
+                                        }}
+                                    >{f.name}</span>
+                                </span>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            {openFolder && (
+                                <button type="button" onClick={() => handleDeleteFolder(openFolder)} style={{
+                                    background: 'white', color: '#CC0000', border: '1px solid #f5c6c6', borderRadius: '8px',
+                                    padding: '6px 12px', fontSize: '10.5px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit',
+                                }}>Delete this folder</button>
+                            )}
+                            <button type="button" onClick={() => setShowNewFolder(s => !s)} style={{
+                                background: 'white', color: '#CC0000', border: '1px solid #f5c6c6', borderRadius: '8px',
+                                padding: '6px 12px', fontSize: '10.5px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit',
+                            }}>+ New {openFolder ? 'Subfolder' : 'Folder'}</button>
+                        </div>
+                    </div>
+
+                    {showNewFolder && (
+                        <form onSubmit={handleCreateFolder} style={{ ...cardStyle, padding: '14px 16px', marginBottom: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                            <div style={{ flex: '1 1 200px' }}>
+                                <input
+                                    type="text"
+                                    className="vp-input"
+                                    autoFocus
+                                    maxLength={60}
+                                    value={folderForm.data.name}
+                                    onChange={e => folderForm.setData('name', e.target.value)}
+                                    placeholder="Folder name (e.g. Certificates)"
+                                    aria-label="Folder name"
+                                    style={fieldStyle}
+                                />
+                                {folderForm.errors.name && <div style={{ fontSize: '10.5px', color: '#CC0000', marginTop: '4px' }}>{folderForm.errors.name}</div>}
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={folderForm.processing || !folderForm.data.name.trim()}
+                                className="btn-view"
+                                style={{
+                                    background: '#CC0000', color: 'white', border: 'none', borderRadius: '8px',
+                                    padding: '9px 18px', fontSize: '11.5px', fontWeight: '600', fontFamily: 'inherit',
+                                    cursor: (folderForm.processing || !folderForm.data.name.trim()) ? 'not-allowed' : 'pointer',
+                                    opacity: (folderForm.processing || !folderForm.data.name.trim()) ? 0.5 : 1,
+                                }}
+                            >
+                                Create
+                            </button>
+                            <button type="button" onClick={() => { setShowNewFolder(false); folderForm.reset(); }} style={{
+                                background: 'white', color: '#666', border: '1px solid #ebebeb', borderRadius: '8px',
+                                padding: '9px 16px', fontSize: '11.5px', fontWeight: '500', cursor: 'pointer', fontFamily: 'inherit',
+                            }}>Cancel</button>
+                        </form>
+                    )}
+
+                    {childFolders.length === 0 && folderFiles.length === 0 ? (
+                        <div style={{ ...cardStyle, padding: '36px 20px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '11.5px', color: '#aaa' }}>
+                                {openFolder
+                                    ? 'Walang laman ang folder na ito. Gumawa ng subfolder o ilipat dito ang mga approved file mula sa itaas.'
+                                    : 'Wala ka pang folder. Gumawa ng sarili mong folder para ma-organize ang mga approved files mo.'}
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {childFolders.length > 0 && (
+                                <div style={{
+                                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px',
+                                    marginBottom: folderFiles.length > 0 ? '16px' : 0,
+                                }}>
+                                    {childFolders.map(f => {
+                                        const nestedIds = [f.id, ...getDescendantFolderIds(f.id)];
+                                        const n = allIndividualFiles.filter(d => nestedIds.includes(d.folder_id)).length;
+                                        const subCount = folderList.filter(sf => sf.parent_id === f.id).length;
+                                        return (
+                                            <button
+                                                key={f.id}
+                                                type="button"
+                                                className="f201-folder"
+                                                onClick={() => navigateToFolder(f.id)}
+                                                style={{
+                                                    ...cardStyle, textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
+                                                    padding: '16px', width: '100%',
+                                                }}
+                                            >
+                                                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                                                    <FolderIcon color="#F59E0B" size={16} />
+                                                </span>
+                                                <div style={{ fontSize: '12px', fontWeight: '600', color: '#111', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+                                                <div style={{ fontSize: '10.5px', color: (n > 0 || subCount > 0) ? '#999' : '#ccc' }}>
+                                                    {subCount > 0 ? `${subCount} folder${subCount !== 1 ? 's' : ''}, ` : ''}{n} file{n !== 1 ? 's' : ''}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {openFolder && (
+                                <DataTable
+                                    cardStyle={cardStyle}
+                                    empty="Walang file dito. Ilipat dito ang mga approved file mula sa itaas."
+                                    columns={['Document Name', 'Download', 'Move']}
+                                    rowOnClick={folderFiles.map(d => () => { const href = approvedViewHref(d); if (href) window.open(href, '_blank', 'noopener'); })}
+                                    rows={folderFiles.map(d => [
+                                        <div>
+                                            <FileNameLink doc={d} />
+                                            <div style={{ fontSize: '10.5px', color: '#999', marginTop: '4px' }}>{fmtDate(d.date)}</div>
+                                        </div>,
+                                        <DownloadButton href={approvedDownloadHref(d)} />,
+                                        <MoveSelect
+                                            folders={folderOptions.filter(o => o.id !== openFolder.id)}
+                                            value=""
+                                            onChange={(v) => moveDoc(d, v)}
+                                            placeholder="Move toâ€¦"
+                                            allowUnfile
+                                            style={fieldStyle}
+                                        />,
+                                    ])}
+                                    keys={folderFiles.map(d => d.id)}
+                                />
+                            )}
+                        </>
+                    )}
+                </>
+            )}
+
+            {statusTab === 'rejected' && (
+                <DataTable
+                    cardStyle={cardStyle}
+                    empty="Walang rejected na file sa ngayon."
+                    columns={['Document Requested', 'Files', 'Remarks']}
+                    rowOnClick={rejectedGroups.map(g => () => setStatusFilesModal({ title: g.request.document_name, files: g.files, request: g.request }))}
+                    rows={rejectedGroups.map(g => {
+                        const latest = g.files.reduce((max, f) => (f.created_at > max.created_at ? f : max), g.files[0]);
+                        return [
+                        <div>
+                            <strong style={{ color: '#111', fontWeight: 600 }}>{g.request.document_name}</strong>
+                            <div style={{ fontSize: '10.5px', color: '#999', marginTop: '4px' }}>{fmtDate(latest.created_at)}</div>
+                        </div>,
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setStatusFilesModal({ title: g.request.document_name, files: g.files, request: g.request }); }}
+                            style={{
+                                fontSize: '10.5px', padding: '5px 10px', borderRadius: '6px', border: 'none',
+                                background: '#CC0000', color: 'white', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',

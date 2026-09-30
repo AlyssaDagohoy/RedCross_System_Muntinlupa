@@ -1,0 +1,474 @@
+<?php
+
+namespace App\Http\Controllers\Volunteer;
+
+use App\Http\Controllers\Controller;
+use App\Models\Document;
+use App\Models\File201Folder;
+use App\Models\VolunteerDocument;
+use App\Models\DocumentRequest;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+
+class File201Controller extends Controller
+{
+    public function index(Request $request)
+    {
+        $userId = $request->user()->id;
+
+        // Files the Red Cross gives the volunteer (approved certificates, etc.)
+        // Multiple files approved from the same document request are grouped
+        // into one row (mirrors how the admin review table groups them).
+        //
+        // Older approvals made before document_request_id linking existed
+        // have that field as null, so for those we fall back to grouping by
+        // name -- files approved together under the same document name still
+        // merge into one row instead of listing separately.
+        $approvedRaw = VolunteerDocument::where('user_id', $userId)->latest()->get();
+
+        $grouped = $approvedRaw->groupBy(function ($d) {
+            return $d->document_request_id
+                ? 'req-' . $d->document_request_id
+                : 'name-' . $d->name;
+        });
+
+        $approvedFiles = $grouped->map(function ($items, $key) {
+            $first = $items->first();
+
+            if ($items->count() === 1) {
+                return [
+                    'id'        => $first->id,
+                    'is_group'  => false,
+                    'name'      => $first->name,
+                    'type'      => $first->type,
+                    'date'      => $first->created_at,
+                    'has_file'  => (bool) $first->path,
+                    'folder_id' => $first->folder_id,
+                    'is_starred' => (bool) $first->is_starred,
+                ];
+            }
+
+            return [
+                'id'                   => 'group-' . $key,
+                'is_group'             => true,
+                'document_request_id'  => $first->document_request_id,
+                'name'                 => $first->name,
+                'type'                 => $first->type,
+                'date'                 => $items->max('created_at'),
+                'files'                => $items->map(fn ($d) => [
+                    'id'            => $d->id,
+                    'original_name' => $d->original_name ?? $d->name,
+                    'has_file'      => (bool) $d->path,
+                    'folder_id'     => $d->folder_id,
+                    'is_starred'    => (bool) $d->is_starred,
+                ])->values(),
+            ];
+        })->sortByDesc('date')->values();
+
+        $folders = File201Folder::where('user_id', $userId)
+            ->orderBy('name')
+            ->get(['id', 'name', 'parent_id', 'is_starred']);
+
+        $documentRequests = DocumentRequest::where('user_id', $userId)
+            ->with(['admin:id,name', 'uploads'])
+            ->latest()
+            ->get()
+            ->map(fn ($r) => [
+                'id'             => $r->id,
+                'document_name'  => $r->document_name,
+                'instructions'   => $r->instructions,
+                'max_files'      => $r->max_files ?? 10,
+                'due_date'       => $r->due_date,
+                'status'         => $r->status,
+                'admin_remarks'  => $r->admin_remarks,
+                'requested_by'   => $r->admin->name ?? 'Administrator',
+                'created_at'     => $r->created_at,
+                'uploads'        => $r->uploads->map(fn ($u) => [
+                    'id'             => $u->id,
+                    'original_name'  => $u->original_name,
+                    'status'         => $u->status,
+                    'admin_remarks'  => $u->admin_remarks,
+                    'created_at'     => $u->created_at,
+                ]),
+            ]);
+
+        return Inertia::render('Volunteer/File201', [
+            'approvedFiles'    => $approvedFiles,
+            'documentRequests' => $documentRequests,
+            'folders'          => $folders,
+        ]);
+    }
+
+    /* ---------------- Upload to fulfill a Document Request ----------------
+     * No category dropdown: the admin's request already names the document.
+     * Stored on the "local" disk (storage/app/private) so there is no raw
+     * URL that could ever serve the file directly. All access goes through
+     * viewUpload / downloadUpload below, which check ownership first. */
+
+    public function storeUpload(Request $request)
+    {
+        $request->validate([
+            'document_request_id' => 'required|exists:document_requests,id',
+            'files'                => 'required|array|min:1|max:10',
+            'files.*'              => 'file|mimes:pdf,jpg,jpeg,png|max:5120',
+        ]);
+
+        $user = $request->user();
+
+        $documentRequest = DocumentRequest::where('id', $request->document_request_id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $limit = $documentRequest->max_files ?? 10;
+        if (count($request->file('files')) > $limit) {
+            return back()->withErrors(['files' => "Hanggang {$limit} file lang ang hiniling."]);
+        }
+
+        foreach ($request->file('files') as $file) {
+            $path = $file->store("documents/{$user->id}", 'local');
+
+            Document::create([
+                'user_id'              => $user->id,
+                'document_request_id'  => $documentRequest->id,
+                'type'                 => 'other',
+                'file_path'            => $path,
+                'original_name'        => $file->getClientOriginalName(),
+                'status'               => 'pending',
+            ]);
+        }
+
+        $count = count($request->file('files'));
+
+        \App\Models\Notification::create([
+            'user_id'      => $user->id,
+            'category'     => 'system',
+            'title'        => 'Document Submitted',
+            'message'      => "Your {$documentRequest->document_name} ({$count} file" . ($count > 1 ? 's' : '') . ") was submitted successfully and is pending review.",
+            'action_label' => 'View documents',
+            'action_url'   => route('volunteer.file201'),
+        ]);
+
+        $documentRequest->update(['status' => 'submitted', 'admin_remarks' => null]);
+
+        return back()->with('success', 'Document(s) uploaded successfully.');
+    }
+
+    /* ---------------- Secure file access ----------------
+     * Every view/download goes through here so we can check ownership first.
+     * No file path or storage URL is ever handed to the frontend directly. */
+
+    public function viewUpload(Request $request, Document $document)
+    {
+        abort_unless($document->user_id === $request->user()->id, 403);
+        abort_unless($document->file_path && Storage::disk('local')->exists($document->file_path), 404);
+
+        return Storage::disk('local')->response($document->file_path, $document->original_name);
+    }
+
+    public function downloadUpload(Request $request, Document $document)
+    {
+        abort_unless($document->user_id === $request->user()->id, 403);
+        abort_unless($document->file_path && Storage::disk('local')->exists($document->file_path), 404);
+
+        return Storage::disk('local')->download($document->file_path, $document->original_name);
+    }
+
+    public function viewApproved(Request $request, VolunteerDocument $document)
+    {
+        abort_unless($document->user_id === $request->user()->id, 403);
+        abort_unless($document->path && Storage::exists($document->path), 404);
+
+        return Storage::response($document->path, $document->name);
+    }
+
+    public function downloadApproved(Request $request, VolunteerDocument $document)
+    {
+        abort_unless($document->user_id === $request->user()->id, 403);
+        abort_unless($document->path && Storage::exists($document->path), 404);
+
+        return Storage::download($document->path, $document->name);
+    }
+
+    /* ---------------- Folders ---------------- */
+
+    public function storeFolder(Request $request)
+    {
+        $userId = $request->user()->id;
+
+        $data = $request->validate([
+            'name' => [
+                'required', 'string', 'max:60',
+                Rule::unique('file201_folders', 'name')->where('user_id', $userId),
+            ],
+            'parent_id' => [
+                'nullable', 'integer',
+                Rule::exists('file201_folders', 'id')->where('user_id', $userId),
+            ],
+        ]);
+
+        File201Folder::create([
+            'user_id'   => $userId,
+            'name'      => trim($data['name']),
+            'parent_id' => $data['parent_id'] ?? null,
+        ]);
+
+        return back();
+    }
+
+    public function destroyFolder(Request $request, File201Folder $folder)
+    {
+        abort_unless($folder->user_id === $request->user()->id, 403);
+
+        // Files inside go back to "Approved" (folder_id -> null via nullOnDelete)
+        $folder->delete();
+
+        return back();
+    }
+
+    /* ---------------- Move an approved file ---------------- */
+
+    public function moveDocument(Request $request, VolunteerDocument $document)
+    {
+        $userId = $request->user()->id;
+
+        abort_unless($document->user_id === $userId, 403);
+
+        $data = $request->validate([
+            'folder_id' => ['nullable', 'integer'],
+        ]);
+
+        if (! empty($data['folder_id'])) {
+            $ownsFolder = File201Folder::where('id', $data['folder_id'])
+                ->where('user_id', $userId)
+                ->exists();
+
+            abort_unless($ownsFolder, 403);
+        }
+
+        $document->update(['folder_id' => $data['folder_id'] ?? null]);
+
+        return back();
+    }
+
+    /* ---------------- Copy (duplicate) a whole folder tree ---------------- */
+
+    public function copyFolder(Request $request, File201Folder $folder)
+    {
+        $userId = $request->user()->id;
+        abort_unless($folder->user_id === $userId, 403);
+
+        $data = $request->validate([
+            'parent_id' => ['nullable', 'integer'],
+        ]);
+        $parentId = $data['parent_id'] ?? null;
+
+        if ($parentId) {
+            abort_unless(
+                File201Folder::where('id', $parentId)->where('user_id', $userId)->exists(),
+                403
+            );
+
+            // Never paste a folder into itself or one of its own subfolders.
+            $cursor = File201Folder::where('user_id', $userId)->find($parentId);
+            while ($cursor) {
+                abort_if($cursor->id === $folder->id, 422);
+                $cursor = $cursor->parent_id
+                    ? File201Folder::where('user_id', $userId)->find($cursor->parent_id)
+                    : null;
+            }
+        }
+
+        $this->duplicateFolderTree($folder, $parentId ? (int) $parentId : null, $userId);
+
+        return back();
+    }
+
+    private function uniqueFolderName(string $base, int $userId): string
+    {
+        $exists = fn ($n) => File201Folder::where('user_id', $userId)->where('name', $n)->exists();
+
+        $candidate = mb_substr($base, 0, 60);
+        if (! $exists($candidate)) {
+            return $candidate;
+        }
+
+        $candidate = mb_substr('Copy of ' . $base, 0, 60);
+        $n = 2;
+        while ($exists($candidate)) {
+            $suffix = ' (' . $n . ')';
+            $candidate = mb_substr('Copy of ' . $base, 0, 60 - mb_strlen($suffix)) . $suffix;
+            $n++;
+        }
+
+        return $candidate;
+    }
+
+    private function duplicateFolderTree(File201Folder $src, ?int $parentId, int $userId): void
+    {
+        $new = File201Folder::create([
+            'user_id'   => $userId,
+            'parent_id' => $parentId,
+            'name'      => $this->uniqueFolderName($src->name, $userId),
+        ]);
+
+        foreach ($src->documents as $doc) {
+            if (! $doc->path || ! Storage::exists($doc->path)) {
+                continue;
+            }
+
+            $dir = dirname($doc->path);
+            $dir = $dir === '.' ? '' : $dir;
+            $ext = pathinfo($doc->path, PATHINFO_EXTENSION);
+            $newPath = ($dir !== '' ? $dir . '/' : '') . bin2hex(random_bytes(16)) . ($ext !== '' ? '.' . $ext : '');
+
+            Storage::copy($doc->path, $newPath);
+
+            VolunteerDocument::create([
+                'user_id'             => $userId,
+                'file_request_id'     => $doc->file_request_id,
+                'document_request_id' => $doc->document_request_id,
+                'folder_id'           => $new->id,
+                'name'                => $doc->name,
+                'original_name'       => $doc->original_name,
+                'type'                => $doc->type,
+                'path'                => $newPath,
+            ]);
+        }
+
+        foreach ($src->children as $child) {
+            $this->duplicateFolderTree($child, $new->id, $userId);
+        }
+    }
+
+    /* ---------------- Copy (duplicate) an approved file into a folder ---------------- */
+
+    public function copyDocument(Request $request, VolunteerDocument $document)
+    {
+        $userId = $request->user()->id;
+
+        abort_unless($document->user_id === $userId, 403);
+        abort_unless($document->path && Storage::exists($document->path), 404);
+
+        $data = $request->validate([
+            'folder_id' => ['required', 'integer'],
+        ]);
+
+        $ownsFolder = File201Folder::where('id', $data['folder_id'])
+            ->where('user_id', $userId)
+            ->exists();
+        abort_unless($ownsFolder, 403);
+
+        $dir = dirname($document->path);
+        $dir = $dir === '.' ? '' : $dir;
+        $ext = pathinfo($document->path, PATHINFO_EXTENSION);
+        $newPath = ($dir !== '' ? $dir . '/' : '') . bin2hex(random_bytes(16)) . ($ext !== '' ? '.' . $ext : '');
+
+        Storage::copy($document->path, $newPath);
+
+        $sameFolder = (int) $document->folder_id === (int) $data['folder_id'];
+
+        VolunteerDocument::create([
+            'user_id'             => $userId,
+            'file_request_id'     => $document->file_request_id,
+            'document_request_id' => $document->document_request_id,
+            'folder_id'           => (int) $data['folder_id'],
+            'name'                => $sameFolder ? 'Copy of ' . $document->name : $document->name,
+            'original_name'       => $document->original_name
+                ? ($sameFolder ? 'Copy of ' . $document->original_name : $document->original_name)
+                : null,
+            'type'                => $document->type,
+            'path'                => $newPath,
+        ]);
+
+        return back();
+    }
+
+    /* ---------------- Star / unstar ---------------- */
+
+    public function toggleStarDocument(Request $request, VolunteerDocument $document)
+    {
+        abort_unless($document->user_id === $request->user()->id, 403);
+
+        $document->update(['is_starred' => ! $document->is_starred]);
+
+        return back();
+    }
+
+    public function toggleStarFolder(Request $request, File201Folder $folder)
+    {
+        abort_unless($folder->user_id === $request->user()->id, 403);
+
+        $folder->update(['is_starred' => ! $folder->is_starred]);
+
+        return back();
+    }
+
+    /* ---------------- Rename an approved file ---------------- */
+
+    public function renameDocument(Request $request, VolunteerDocument $document)
+    {
+        abort_unless($document->user_id === $request->user()->id, 403);
+
+        $data = $request->validate([
+            'original_name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $document->update(['original_name' => $data['original_name']]);
+
+        return back();
+    }
+
+    /* ---------------- Rename a folder ---------------- */
+
+    public function renameFolder(Request $request, File201Folder $folder)
+    {
+        $userId = $request->user()->id;
+        abort_unless($folder->user_id === $userId, 403);
+
+        $data = $request->validate([
+            'name' => [
+                'required', 'string', 'max:60',
+                Rule::unique('file201_folders', 'name')->where('user_id', $userId)->ignore($folder->id),
+            ],
+        ]);
+
+        $folder->update(['name' => trim($data['name'])]);
+
+        return back();
+    }
+
+    /* ---------------- Move a folder under a new parent ---------------- */
+
+    public function moveFolder(Request $request, File201Folder $folder)
+    {
+        $userId = $request->user()->id;
+        abort_unless($folder->user_id === $userId, 403);
+
+        $data = $request->validate([
+            'parent_id' => ['nullable', 'integer'],
+        ]);
+
+        $parentId = $data['parent_id'] ?? null;
+
+        if ($parentId) {
+            $parent = File201Folder::where('id', $parentId)->where('user_id', $userId)->first();
+            abort_unless($parent, 403);
+
+            $ids = [$folder->id];
+            $frontier = [$folder->id];
+            while (!empty($frontier)) {
+                $children = File201Folder::whereIn('parent_id', $frontier)->pluck('id')->all();
+                $frontier = array_diff($children, $ids);
+                $ids = array_merge($ids, $frontier);
+            }
+
+            abort_if(in_array($parentId, $ids), 422, 'Cannot move a folder into itself or a subfolder.');
+        }
+
+        $folder->update(['parent_id' => $parentId]);
+
+        return back();
+    }
+}

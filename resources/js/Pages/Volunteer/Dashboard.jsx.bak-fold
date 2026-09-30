@@ -1,0 +1,858 @@
+import { Link, router } from '@inertiajs/react';
+import { useState, useEffect } from 'react';
+import VolunteerShell, { safeRoute, useVolunteerShell, faceStatusLabel } from '../../Components/VolunteerShell';
+import { AttendanceCapture } from '../../Components/FaceAttendance';
+
+export default function VolunteerDashboard({ auth, totalHours, totalDays, monthDays, assignedActivities, recentAttendance, todayAttendance }) {
+    const activitiesList = assignedActivities || [];
+    const attendance = (recentAttendance || [])
+        .filter(rec => !!rec.hours_rendered || !!rec.time_out || rec.status === 'cancelled')
+        .slice(0, 5);
+
+    const todayRecords = todayAttendance || [];
+    const attendanceFor = (act) => todayRecords.find(rec => rec.activity_id === act.id) || null;
+    const isOngoing = (rec) => !!rec?.time_in && !rec?.time_out;
+    const isCompleted = (rec) => !!rec?.time_out;
+
+    const todayActivities = activitiesList
+        .filter(a => new Date(a.date).toDateString() === new Date().toDateString())
+        .filter(a => !isCompleted(attendanceFor(a)))
+        .sort((a, b) => {
+            const aOngoing = isOngoing(attendanceFor(a)) ? 1 : 0;
+            const bOngoing = isOngoing(attendanceFor(b)) ? 1 : 0;
+            return bOngoing - aOngoing;
+        });
+
+    // Upcoming: only the next 3 activities are shown; the rest live behind "View All"
+    const upcomingActivities = activitiesList.filter(a => new Date(a.date) > new Date()).slice(0, 3);
+
+    const [activeCapture, setActiveCapture] = useState(null);
+    // Inline-expanded item. Keys are namespaced ("today-<id>" / "up-<id>" / "rec-<index>") so
+    // items from different cards can never open each other.
+    const [openKey, setOpenKey] = useState(null);
+    const toggleOpen = (key) => setOpenKey((cur) => (cur === key ? null : key));
+    const [successInfo, setSuccessInfo] = useState(null);
+    const isMobile = useIsMobile();
+    const isPhone = useIsMobile(600);
+    const [mobileTab, setMobileTab] = useState('today');
+
+    const handleCaptureSuccess = () => {
+        const act = activitiesList.find(a => a.id === activeCapture?.activityId);
+        setSuccessInfo({
+            mode: activeCapture?.mode,
+            activityName: act?.name || 'the activity',
+        });
+        setActiveCapture(null);
+        router.reload({ only: ['todayAttendance', 'recentAttendance', 'totalHours', 'totalDays', 'monthDays'] });
+    };
+
+    return (
+        <VolunteerShell active="dashboard" title="Dashboard">
+
+            <SetupNotice />
+            {isPhone ? (
+                <>
+                    <SetupStatus compact />
+                    <PhoneClockCard activities={todayActivities} attendanceFor={attendanceFor} onStart={(activity, mode) => setActiveCapture({ activityId: activity.id, mode })} />
+                </>
+            ) : (
+                <SetupStatus />
+            )}
+
+            {isMobile && (
+                <div role="tablist" style={{ display: 'flex', width: 'fit-content', gap: '2px', background: '#f3f3f4', borderRadius: '999px', padding: '2px', marginBottom: '12px' }}>
+                    {[['today', 'Today'], ['upcoming', 'Upcoming']].map(([k, label]) => (
+                        <button key={k} type="button" role="tab" aria-selected={mobileTab === k} onClick={() => setMobileTab(k)} style={{
+                            border: 'none', borderRadius: '999px', padding: '6px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                            background: mobileTab === k ? 'white' : 'transparent', color: mobileTab === k ? '#111' : '#777', boxShadow: mobileTab === k ? '0 0 0 0.5px #ececec' : 'none',
+                        }}>{label}</button>
+                    ))}
+                </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 280px', gap: '12px', marginBottom: '20px', alignItems: 'start' }}>
+                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: (isMobile && mobileTab !== 'today') ? 'none' : 'block' }}>
+                    <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Today's Tasks</span>
+                        <span style={{ fontSize: '10px', color: '#bbb', background: '#f5f5f5', padding: '2px 8px', borderRadius: '10px' }}>
+                            {todayActivities.length} task{todayActivities.length !== 1 ? 's' : ''}
+                        </span>
+                    </div>
+                    {todayActivities.length === 0 ? (
+                        <div style={{ padding: '36px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '11px', color: '#ccc' }}>No tasks scheduled for today</div>
+                        </div>
+                    ) : (
+                        todayActivities.map((act, i) => {
+                            const key = `today-${act.id}`;
+                            const isOpen = openKey === key;
+                            return (
+                                <div
+                                    key={act.id}
+                                    style={{ borderBottom: i < todayActivities.length - 1 ? '1px solid #f5f5f5' : 'none' }}
+                                >
+                                    <div
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => toggleOpen(key)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleOpen(key); }}
+                                        className="task-row"
+                                        style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                                            padding: '12px 18px', cursor: 'pointer',
+                                            transition: 'background 0.1s',
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                            <div style={{ width: '6px', height: '32px', borderRadius: '3px', background: '#CC0000', flexShrink: 0 }} />
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ fontSize: '12px', fontWeight: '500', color: '#111' }}>{act.name}</span>
+                                                    {isOngoing(attendanceFor(act)) && (
+                                                        <span style={{ fontSize: '9px', fontWeight: '600', padding: '2px 8px', borderRadius: '10px', background: '#fffbeb', color: '#b45309' }}>
+                                                            Ongoing
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>
+                                                    {isPhone ? (
+                                                        /* phone: start time only */
+                                                        act.start_time ? (() => { const [hh, mi] = act.start_time.split(':'); const h24 = Number(hh); return `${((h24 + 11) % 12) + 1}:${mi} ${h24 >= 12 ? 'PM' : 'AM'}`; })() : ''
+                                                    ) : (
+                                                        <>
+                                                            {new Date(act.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                                                            {act.start_time ? ` · ${act.start_time.substring(0, 5)}` : ''}
+                                                            {act.location_name ? ` · ${act.location_name}` : ''}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
+                                            {/* stopPropagation para hindi mag-toggle yung expand kapag Time In/Out ang pinindot */}
+                                            {!isPhone && (
+                                                <div
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    onKeyDown={(e) => e.stopPropagation()}
+                                                >
+                                                    <TaskAttendanceButton
+                                                        act={act}
+                                                        record={attendanceFor(act)}
+                                                        onStart={(activity, mode) => setActiveCapture({ activityId: activity.id, mode })}
+                                                    />
+                                                </div>
+                                            )}
+                                            <Chevron open={isOpen} />
+                                        </div>
+                                    </div>
+                                    {isOpen && (
+                                        <div style={{ borderTop: '1px solid #f5f5f5', padding: '12px 18px', background: '#fafafa' }}>
+                                            <ActivityDetails act={act} />
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )}
+                    {/* Footer "View All" — goes to the Schedule page (Assigned tab, default) */}
+                    <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
+                        <Link href={route('volunteer.schedule')} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
+                            View All
+                        </Link>
+                    </div>
+                </div>
+
+                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: (isMobile && mobileTab !== 'upcoming') ? 'none' : 'block' }}>
+                    <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Upcoming</span>
+                    </div>
+                    {upcomingActivities.length === 0 ? (
+                        <div style={{ padding: isMobile ? '16px' : '32px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '11px', color: '#ccc' }}>No upcoming tasks</div>
+                        </div>
+                    ) : (
+                        <div style={{ padding: '4px 0' }}>
+                            {upcomingActivities.map((act, i) => {
+                                const key = `up-${act.id}`;
+                                const isOpen = openKey === key;
+                                return (
+                                    <div
+                                        key={act.id}
+                                        style={{ borderBottom: i < upcomingActivities.length - 1 ? '1px solid #f8f8f8' : 'none' }}
+                                    >
+                                        <div
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => toggleOpen(key)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleOpen(key); }}
+                                            style={{
+                                                padding: '8px 18px',
+                                                display: 'flex', gap: '10px', alignItems: 'flex-start',
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            <div style={{ width: '3px', height: '3px', borderRadius: '50%', background: '#CC0000', flexShrink: 0, marginTop: '6px' }} />
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontSize: '11px', fontWeight: '500', color: '#222' }}>{act.name}</div>
+                                                <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>
+                                                    {new Date(act.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                </div>
+                                            </div>
+                                            <span style={{ marginTop: '3px' }}><Chevron open={isOpen} /></span>
+                                        </div>
+                                        {isOpen && (
+                                            <div style={{ borderTop: '1px solid #f5f5f5', padding: '12px 18px', background: '#fafafa' }}>
+                                                <ActivityDetails act={act} />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {/* Footer "View All" — goes to the Schedule page, landing directly on the Upcoming tab */}
+                    <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
+                        <Link href={route('volunteer.schedule', { tab: 'upcoming' })} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
+                            View All
+                        </Link>
+                    </div>
+                </div>
+            </div>
+
+            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Recent Activity</span>
+                </div>
+                {attendance.length === 0 ? (
+                    <div style={{ padding: isMobile ? '16px' : '32px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', color: '#ccc' }}>No recent activity</div>
+                    </div>
+                ) : (
+                    <div>
+                        {attendance.map((rec, i) => {
+                            const key = `rec-${i}`;
+                            return (
+                                <RecentActivityRow
+                                    key={i}
+                                    rec={rec}
+                                    isLast={i === attendance.length - 1}
+                                    isOpen={openKey === key}
+                                    onToggle={() => toggleOpen(key)}
+                                />
+                            );
+                        })}
+                    </div>
+                )}
+                {/* Footer "View all" — moved from the header to the bottom, goes to My Records */}
+                <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
+                    <Link href={route('volunteer.records')} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
+                        View all →
+                    </Link>
+                </div>
+            </div>
+
+            {activeCapture && (
+                <AttendanceCapture
+                    mode={activeCapture.mode}
+                    activityId={activeCapture.activityId}
+                    onClose={() => setActiveCapture(null)}
+                    onSuccess={handleCaptureSuccess}
+                />
+            )}
+
+            {successInfo && (
+                <ScanSuccessModal
+                    mode={successInfo.mode}
+                    activityName={successInfo.activityName}
+                    onClose={() => setSuccessInfo(null)}
+                />
+            )}
+
+        </VolunteerShell>
+    );
+}
+
+function RcElapsed({ since }) {
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+        const t = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(t);
+    }, []);
+    const ms = now - new Date(since).getTime();
+    const s = Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 1000)) : 0;
+    const pad = (n) => String(n).padStart(2, '0');
+    return <>{`${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`}</>;
+}
+
+// Phone-only (600px and below) big round Time In / Time Out button.
+// Same rules and same onStart handler as TaskAttendanceButton, so the check-in flow is unchanged.
+function PhoneClockCard({ activities, attendanceFor, onStart }) {
+    const { setup } = useVolunteerShell();
+    const faceReady = !!setup.face_done;
+    const [pickedId, setPickedId] = useState(null);
+    const [now, setNow] = useState(() => Date.now());
+    const [open, setOpen] = useState(true);
+
+    const act = activities.find(a => String(a.id) === String(pickedId)) || activities[0] || null;
+    const record = act ? attendanceFor(act) : null;
+    const timedIn = !!record?.time_in && !record?.time_out;
+
+    useEffect(() => {
+        if (!timedIn) return undefined;
+        setNow(Date.now());
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, [timedIn]);
+
+    const DASH = '\u2014';
+    const card = { background: 'white', borderRadius: '14px', border: '1px solid #ebebeb', padding: '16px', marginBottom: '12px' };
+    const dateText = new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' });
+
+    const dateRow = (
+        <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#777', marginBottom: '12px' }}>{dateText}</div>
+    );
+
+    if (!act) {
+        return (
+            <>
+                <div style={{ ...card, textAlign: 'center', padding: '28px 16px' }}>
+                    {dateRow}
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#111' }}>Nothing to check in for today</div>
+                    <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>New tasks will show up here.</div>
+                </div>
+            </>
+        );
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const startedAt = timedIn ? new Date(record.time_in).getTime() : NaN;
+    const elapsedSec = Number.isFinite(startedAt) ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
+    const clock = `${Math.floor(elapsedSec / 3600)}:${pad(Math.floor((elapsedSec % 3600) / 60))}:${pad(elapsedSec % 60)}`;
+    const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+    const fmt12 = (t) => { const m = toMin(t); if (m == null) return DASH; const h = Math.floor(m / 60); return `${((h + 11) % 12) + 1}:${pad(m % 60)} ${h >= 12 ? 'PM' : 'AM'}`; };
+    const sMin = toMin(act.start_time);
+    const eMin = toMin(act.end_time);
+    const planned = sMin != null && eMin != null && eMin > sMin ? (eMin - sMin) * 60 : 0;
+    const progress = timedIn && planned ? Math.min(1, elapsedSec / planned) : 0;
+    const R = 76;
+    const C = 2 * Math.PI * R;
+    const label = timedIn ? 'Time Out' : 'Time In';
+    const leftLabel = timedIn ? 'Time in' : 'Starts';
+    const leftValue = timedIn
+        ? (Number.isFinite(startedAt) ? new Date(startedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : DASH)
+        : fmt12(act.start_time);
+
+    return (
+        <>
+            <div style={{ ...card, cursor: 'pointer', userSelect: 'none' }} onClick={() => setOpen(o => !o)}>
+                <button type="button" aria-expanded={open} aria-label={open ? 'Collapse card' : 'Expand card'} onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', background: 'none', border: 'none', padding: 0, marginBottom: open ? '14px' : 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                        <span style={{ display: 'block', fontSize: '15px', fontWeight: '600', color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{act.name}</span>
+                        <span style={{ display: 'block', fontSize: '11px', color: (!open && timedIn) ? '#CC0000' : '#888', marginTop: '2px' }}>
+                            {open ? dateText : (timedIn ? `On duty \u00B7 ${clock}` : 'Not started yet')}
+                        </span>
+                    </span>
+                    <span style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f5f5f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points={open ? '6 15 12 9 18 15' : '6 9 12 15 18 9'} /></svg>
+                    </span>
+                </button>
+                <div style={{ display: open ? 'block' : 'none' }}>
+                {activities.length > 1 && (
+                    <label onClick={(e) => e.stopPropagation()} style={{ display: 'block', marginBottom: '14px' }}>
+                        <span style={{ display: 'block', fontSize: '11px', color: '#888', marginBottom: '5px' }}>Switch activity</span>
+                        <select value={act.id} onChange={(e) => setPickedId(e.target.value)} style={{ width: '100%', height: '44px', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '0 12px', fontSize: '13px', fontFamily: 'inherit', color: '#111', background: 'white' }}>
+                            {activities.map(a => {
+                                const r = attendanceFor(a);
+                                return <option key={a.id} value={a.id}>{`${a.name}${r?.time_in && !r?.time_out ? ' (ongoing)' : ''}`}</option>;
+                            })}
+                        </select>
+                    </label>
+                )}
+
+                <div style={{ textAlign: 'center' }}>
+                    <button
+                        type="button"
+                        aria-label={label}
+                        aria-disabled={!faceReady}
+                        onClick={(e) => { e.stopPropagation(); if (faceReady) onStart(act, timedIn ? 'checkout' : 'checkin'); }}
+                        style={{ position: 'relative', display: 'block', margin: '0 auto', width: '170px', height: '170px', padding: 0, border: 'none', background: 'none', cursor: faceReady ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}
+                    >
+                        <svg width="170" height="170" viewBox="0 0 170 170" aria-hidden="true">
+                            <circle cx="85" cy="85" r="74" fill="none" stroke={faceReady ? '#f7c1c1' : '#e4e4e6'} strokeWidth="7" />
+                            {progress > 0 && (
+                                <circle cx="85" cy="85" r="74" fill="none" stroke="#CC0000" strokeWidth="7" strokeLinecap="round"
+                                    strokeDasharray={`${(Math.min(progress, 1) * 2 * Math.PI * 74).toFixed(1)} ${(2 * Math.PI * 74).toFixed(1)}`} transform="rotate(-90 85 85)" />
+                            )}
+                            <circle cx="85" cy="85" r="62" fill={faceReady ? '#CC0000' : '#c9c9cc'} />
+                            {progress > 0 && (() => {
+                                const a = Math.min(progress, 1) * 2 * Math.PI - Math.PI / 2;
+                                return <circle data-rc-dot="1" cx={(85 + 74 * Math.cos(a)).toFixed(1)} cy={(85 + 74 * Math.sin(a)).toFixed(1)} r="8" fill="white" stroke="#CC0000" strokeWidth="3" />;
+                            })()}
+                        </svg>
+                        <span style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                            <span style={{ fontSize: timedIn ? '22px' : '20px', fontWeight: '600', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{timedIn ? <RcElapsed since={record.time_in} /> : label}</span>
+                            <span style={{ fontSize: '11px', marginTop: '5px', color: faceReady ? '#ffd9d9' : '#f3f3f4' }}>
+                                {faceReady ? (timedIn ? 'Tap to end shift' : 'Tap to start') : 'Not available yet'}
+                            </span>
+                        </span>
+                        </button>
+                </div>
+
+                {!faceReady && (
+                    <div style={{ marginTop: '12px', padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '10px', fontSize: '11px', color: '#777', textAlign: 'center' }}>
+                        {setup.face_pending ? 'Your face registration is waiting for admin approval.' : 'Register your face to use Time In and Time Out.'}
+                    </div>
+                )}
+
+                <div style={{ display: 'flex', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #f0f0f0', textAlign: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '11px', color: '#888' }}>{leftLabel}</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginTop: '2px' }}>{leftValue}</div>
+                    </div>
+                    <div style={{ flex: 1, borderLeft: '1px solid #f0f0f0' }}>
+                        <div style={{ fontSize: '11px', color: '#888' }}>Ends at</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginTop: '2px' }}>{fmt12(act.end_time)}</div>
+                    </div>
+                </div>
+
+                {act.location_name && (
+                    <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: '#666' }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                        {act.location_name}
+                    </div>
+                )}
+                </div>
+            </div>
+        </>
+    );
+}
+
+function TaskAttendanceButton({ act, record, onStart }) {
+    const { setup } = useVolunteerShell();
+    const faceReady = !!setup.face_done;
+
+    if (record?.time_out) {
+        return (
+            <span style={{ fontSize: '10px', fontWeight: '600', color: '#16a34a', background: '#f0fdf4', borderRadius: '5px', padding: '3px 10px' }}>
+                Completed
+            </span>
+        );
+    }
+
+    const timedIn = !!record?.time_in;
+    const label = timedIn ? 'Time Out' : 'Time In';
+    const base = {
+        fontSize: '10px', fontWeight: '600', borderRadius: '5px', padding: '3px 12px',
+        fontFamily: 'inherit', whiteSpace: 'nowrap', border: '1px solid #CC0000', cursor: 'pointer',
+    };
+
+    if (!faceReady) {
+        return (
+            <span
+                aria-disabled="true"
+                title={setup.face_pending ? 'Waiting for admin approval of your face registration' : 'Register your face to use Time In and Time Out'}
+                style={{ ...base, background: '#f5f5f5', color: '#bbb', border: '1px solid #f0f0f0', cursor: 'not-allowed' }}
+            >
+                {label}
+            </span>
+        );
+    }
+
+    return (
+        <button
+            type="button"
+            className={timedIn ? '' : 'btn-view'}
+            onClick={() => onStart(act, timedIn ? 'checkout' : 'checkin')}
+            style={{ ...base, background: timedIn ? 'white' : '#CC0000', color: timedIn ? '#CC0000' : 'white' }}
+        >
+            {label}
+        </button>
+    );
+}
+
+function recordToActivity(rec) {
+    if (rec.activity) return rec.activity;
+    return {
+        date: rec.date,
+        name: rec.activity_name,
+        start_time: rec.activity_start_time,
+        end_time: rec.activity_end_time,
+        location_name: rec.location_name,
+        assignment: rec.assignment,
+        description: rec.description,
+        assigned_by_role: rec.assigned_by_role,
+        assigned_by_name: rec.assigned_by_name,
+    };
+}
+
+function RecentActivityRow({ rec, isLast, isOpen, onToggle }) {
+    const cancelled = rec.status === 'cancelled';
+    const name = rec.activity_name || rec.activity?.name || 'Activity';
+
+    const timeRange = () => {
+        if (!rec.time_in) return '—';
+        const fmt = (d) => new Date(d).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+        return rec.time_out ? `${fmt(rec.time_in)} → ${fmt(rec.time_out)}` : fmt(rec.time_in);
+    };
+
+    return (
+        <div style={{ borderBottom: isLast ? 'none' : '1px solid #f5f5f5' }}>
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={onToggle}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle(); }}
+                className="task-row"
+                style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                    padding: '12px 18px', cursor: 'pointer',
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                    <div style={{
+                        width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
+                        background: cancelled ? '#fef2f2' : '#f0fdf4',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                        {cancelled ? <CancelledIcon /> : <CheckIcon />}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{
+                            fontSize: '12px', fontWeight: '600', color: '#111',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>
+                            {name}
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>
+                            {new Date(rec.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                            {' · '}{timeRange()}
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                    <span style={{
+                        fontSize: '9px', fontWeight: '600', padding: '3px 9px', borderRadius: '10px',
+                        background: cancelled ? '#fef2f2' : '#f0fdf4',
+                        color: cancelled ? '#DC2626' : '#16a34a',
+                    }}>
+                        {cancelled ? 'Cancelled' : 'Completed'}
+                    </span>
+                    <Chevron open={isOpen} />
+                </div>
+            </div>
+
+            {isOpen && (
+                <div style={{ borderTop: '1px solid #f5f5f5', padding: '16px 18px', background: '#fafafa' }}>
+                    <ActivityDetails act={recordToActivity(rec)} />
+                </div>
+            )}
+        </div>
+    );
+}
+
+function CheckIcon() {
+    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
+}
+
+function CancelledIcon() {
+    return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+}
+
+function ScanSuccessModal({ mode, activityName, onClose }) {
+    const isCheckin = mode === 'checkin';
+
+    return (
+        <div
+            role="presentation"
+            onClick={onClose}
+            style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+                display: 'grid', placeItems: 'center', padding: '16px', zIndex: 400,
+                fontFamily: "'Inter', sans-serif",
+            }}
+        >
+            <div
+                role="dialog"
+                aria-modal="true"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    background: 'white', borderRadius: '16px', width: '100%', maxWidth: '320px',
+                    overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center',
+                    padding: '28px 24px 24px',
+                }}
+            >
+                <div style={{
+                    width: '52px', height: '52px', borderRadius: '50%', margin: '0 auto 14px',
+                    background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                </div>
+
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#111', marginBottom: '6px' }}>
+                    {isCheckin ? 'Time In Successful' : 'Time Out Successful'}
+                </div>
+
+                <div style={{ fontSize: '12.5px', color: '#666', lineHeight: '1.6', marginBottom: '18px' }}>
+                    {isCheckin
+                        ? <>You're now <strong style={{ color: '#b45309' }}>Ongoing</strong> for <strong>{activityName}</strong>.</>
+                        : <>Your hours for <strong>{activityName}</strong> have been recorded.</>
+                    }
+                </div>
+
+                <button
+                    type="button"
+                    onClick={onClose}
+                    style={{
+                        width: '100%', padding: '11px', borderRadius: '10px', border: 'none',
+                        background: '#CC0000', color: 'white', fontSize: '13px', fontWeight: '600',
+                        cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                >
+                    Got it
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/* ---------------- Inline activity details — stacked in a single column ---------------- */
+
+function ActivityDetails({ act }) {
+    const formatTimeRange = () => {
+        if (!act.start_time) return '—';
+        const fmt = (t) => {
+            const [h, m] = t.split(':').map(Number);
+            const d = new Date();
+            d.setHours(h, m, 0, 0);
+            return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
+        };
+        return act.end_time ? `${fmt(act.start_time)} – ${fmt(act.end_time)}` : fmt(act.start_time);
+    };
+
+    const assignedBy = act.assigned_by_name
+        ? `${act.assigned_by_role ? `${act.assigned_by_role} / ` : ''}${act.assigned_by_name}`
+        : null;
+
+    const fields = [
+        { icon: <CalendarIcon />, label: 'Date', value: act.date ? new Date(act.date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '—' },
+        { icon: <ClockIcon />, label: 'Time', value: formatTimeRange() },
+        { icon: <PinIcon />, label: 'Location', value: act.location_name },
+        { icon: <ClipboardIcon />, label: 'Assignment', value: act.assignment || 'No assignment specified.' },
+        { icon: <TextIcon />, label: 'Description', value: act.description || 'No description provided.' },
+        ...(assignedBy ? [{ icon: <UserIcon />, label: 'Assigned By', value: assignedBy }] : []),
+    ];
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {fields.map((f) => (
+                <div key={f.label} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <div style={{ color: '#bbb', marginTop: '2px', flexShrink: 0 }}>{f.icon}</div>
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{f.label}</div>
+                        <div style={{ fontSize: '12.5px', color: '#222', marginTop: '2px', lineHeight: '1.5', wordBreak: 'break-word' }}>{f.value ?? '—'}</div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function Chevron({ open }) {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0, display: 'block' }}>
+            <polyline points="6 9 12 15 18 9" />
+        </svg>
+    );
+}
+
+const iconProps = { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
+
+function ClockIcon() {
+    return <svg {...iconProps}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+}
+
+function PinIcon() {
+    return <svg {...iconProps}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>;
+}
+
+function CalendarIcon() {
+    return <svg {...iconProps}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+}
+
+function ClipboardIcon() {
+    return <svg {...iconProps}><path d="M9 2h6v4H9z"/><rect x="4" y="4" width="16" height="18" rx="2"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>;
+}
+
+function UserIcon() {
+    return <svg {...iconProps}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+}
+
+function TextIcon() {
+    return <svg {...iconProps}><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>;
+}
+
+function useIsMobile(breakpoint = 768) {
+    const [m, setM] = useState(typeof window !== 'undefined' && window.innerWidth <= breakpoint);
+    useEffect(() => {
+        const on = () => setM(window.innerWidth <= breakpoint);
+        on();
+        window.addEventListener('resize', on);
+        return () => window.removeEventListener('resize', on);
+    }, [breakpoint]);
+    return m;
+}
+
+function SetupNotice() {
+    const { setup } = useVolunteerShell();
+    const isMobile = useIsMobile();
+    if (isMobile || setup.profile_completed) return null;
+
+    return (
+        <div role="region" aria-label="Profile setup required" style={{
+            background: '#fff5f5', border: '1px solid #f5c6c6', borderLeft: '4px solid #CC0000',
+            borderRadius: '10px', padding: '16px 20px', marginBottom: '20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+        }}>
+            <div>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginBottom: '3px' }}>Welcome to the Volunteer Portal!</div>
+                <div style={{ fontSize: '11.5px', color: '#555' }}>Please complete your volunteer profile to continue using the portal.</div>
+            </div>
+            <Link href={safeRoute('volunteer.profile')} className="btn-view" style={{
+                background: '#CC0000', color: 'white', fontSize: '11px', fontWeight: '600',
+                padding: '9px 18px', borderRadius: '8px', textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>Set Up My Profile</Link>
+        </div>
+    );
+}
+
+function Pill({ ok, children }) {
+    return (
+        <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            fontSize: '10px', fontWeight: '600', padding: '3px 10px', borderRadius: '10px',
+            background: ok ? '#f0fdf4' : '#fffbeb', color: ok ? '#16a34a' : '#b45309',
+        }}>
+            <span aria-hidden="true">{ok ? '✓' : '●'}</span>
+            {children}
+        </span>
+    );
+}
+
+function SetupStatus({ compact = false }) {
+    const { setup, openFace } = useVolunteerShell();
+    const { profile_completed: profileDone, face_done: faceDone, face_needed: faceNeeded, face_pending: facePending } = setup;
+
+    const isMobile = useIsMobile();
+    if (profileDone && faceDone) return null;
+
+    if (isMobile) {
+        const doneCount = (profileDone ? 1 : 0) + (faceDone ? 1 : 0);
+        if (compact) {
+            const btnStyle = { fontSize: '12px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '8px', padding: '8px 14px', textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 };
+            const stepRow = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', minHeight: '34px' };
+            const stepLabel = { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', minWidth: 0 };
+            const iconDone = (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3B6D11" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
+            );
+            const iconTodo = (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /></svg>
+            );
+            const iconWait = (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><polyline points="12 7 12 12 15 14" /></svg>
+            );
+            return (
+                <div data-rc-setup-steps="1" style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '600', color: '#111' }}>Finish setting up</span>
+                        <span style={{ fontSize: '12px', color: '#92400e', whiteSpace: 'nowrap' }}>{doneCount} of 2 done</span>
+                    </div>
+                    <div style={{ height: '4px', background: '#fde68a', borderRadius: '2px', margin: '8px 0 10px' }}>
+                        <div style={{ width: (doneCount * 50) + '%', height: '4px', background: '#CC0000', borderRadius: '2px' }} />
+                    </div>
+                    <div style={stepRow}>
+                        <span style={{ ...stepLabel, color: profileDone ? '#3B6D11' : '#111' }}>{profileDone ? iconDone : iconTodo}Complete your profile</span>
+                        {!profileDone && <Link href={safeRoute('volunteer.profile')} style={btnStyle}>Complete</Link>}
+                    </div>
+                    <div style={{ ...stepRow, marginTop: '6px' }}>
+                        <span style={{ ...stepLabel, color: faceDone ? '#3B6D11' : (profileDone ? '#111' : '#999') }}>{faceDone ? iconDone : (facePending ? iconWait : iconTodo)}Register your face</span>
+                        {!faceDone && facePending && <span style={{ fontSize: '12px', color: '#92400e', whiteSpace: 'nowrap' }}>Waiting for approval</span>}
+                        {!faceDone && !facePending && profileDone && faceNeeded && <button type="button" onClick={openFace} style={btnStyle}>Register</button>}
+                    </div>
+                </div>
+            );
+        }
+        const mRow = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '12px 16px', borderTop: '1px solid #f5f5f5' };
+        const mBtn = { fontSize: '11px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 };
+        return (
+            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '12px' }}>
+                <div style={{ padding: '14px 16px 12px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#111' }}>Finish setting up</div>
+                    <div style={{ fontSize: '11px', color: '#888', margin: '2px 0 10px' }}>{doneCount} of 2 done</div>
+                    <div style={{ height: '4px', background: '#f0f0f0', borderRadius: '2px' }}>
+                        <div style={{ width: (doneCount * 50) + '%', height: '4px', background: '#CC0000', borderRadius: '2px' }} />
+                    </div>
+                </div>
+                <div style={mRow}>
+                    <div>
+                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#111', marginBottom: '5px' }}>Profile</div>
+                        <Pill ok={profileDone}>{profileDone ? 'Completed' : 'Not Yet Completed'}</Pill>
+                    </div>
+                    {!profileDone && <Link href={safeRoute('volunteer.profile')} className="btn-view" style={mBtn}>Set up</Link>}
+                </div>
+                <div style={mRow}>
+                    <div>
+                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#111', marginBottom: '5px' }}>Face registration</div>
+                        <Pill ok={faceDone}>{faceStatusLabel(setup)}</Pill>
+                    </div>
+                    {faceNeeded && <button type="button" className="btn-view" onClick={openFace} style={mBtn}>{setup.face_status === 'rejected' ? 'Register again' : 'Register'}</button>}
+                </div>
+                {(faceNeeded || facePending) && (
+                    <div style={{ padding: '10px 16px', background: '#fafafa', borderTop: '1px solid #f5f5f5', fontSize: '10.5px', color: '#888' }}>
+                        {facePending ? 'Your face registration is waiting for admin approval.' : 'Register your face to use Time In and Time Out.'}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    const rowStyle = { padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' };
+    const smallBtn = {
+        fontSize: '10px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none',
+        borderRadius: '5px', padding: '5px 12px', cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit', whiteSpace: 'nowrap',
+    };
+
+    return (
+        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '20px' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Account setup</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div style={{ ...rowStyle, borderRight: '1px solid #f5f5f5' }}>
+                    <div>
+                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#111', marginBottom: '6px' }}>Profile Setup</div>
+                        <Pill ok={profileDone}>{profileDone ? 'Completed' : 'Not Yet Completed'}</Pill>
+                    </div>
+                    {!profileDone && <Link href={safeRoute('volunteer.profile')} className="btn-view" style={smallBtn}>Set Up My Profile</Link>}
+                </div>
+
+                <div style={rowStyle}>
+                    <div>
+                        <div style={{ fontSize: '12px', fontWeight: '500', color: '#111', marginBottom: '6px' }}>Face Registration</div>
+                        <Pill ok={faceDone}>{faceStatusLabel(setup)}</Pill>
+                    </div>
+                    {faceNeeded && <button type="button" className="btn-view" onClick={openFace} style={smallBtn}>{setup.face_status === 'rejected' ? 'Register Again' : 'Register My Face'}</button>}
+                </div>
+            </div>
+
+            {(faceNeeded || facePending) && (
+                <div style={{ padding: '10px 18px', background: '#fafafa', borderTop: '1px solid #f5f5f5', fontSize: '10.5px', color: '#888' }}>
+                    {facePending ? 'Your face registration is waiting for admin approval.' : 'Register your face to use Time In and Time Out.'}
+                </div>
+            )}
+        </div>
+    );
+}

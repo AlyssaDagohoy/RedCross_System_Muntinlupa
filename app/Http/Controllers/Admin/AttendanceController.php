@@ -14,6 +14,8 @@ class AttendanceController extends Controller
 {
     public function index(Request $request)
     {
+        Attendance::markAbsences();
+        Attendance::markAbsences();
         $query = Attendance::with(['user', 'activity'])
             ->orderBy('date', 'desc');
 
@@ -48,6 +50,8 @@ class AttendanceController extends Controller
 
     public function exportPdf(Request $request)
     {
+        Attendance::markAbsences();
+        Attendance::markAbsences();
         $query = Attendance::with(['user', 'activity'])
             ->orderBy('date', 'desc');
 

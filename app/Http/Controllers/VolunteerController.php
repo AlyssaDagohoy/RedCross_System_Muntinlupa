@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Mail\VolunteerApproved;
 use App\Mail\VolunteerRejected;
 use App\Models\User;
+use App\Models\DocumentRequest;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
@@ -56,5 +58,44 @@ class VolunteerController extends Controller
         }
 
         return back()->with('success', 'Volunteer rejected and notified via email.');
+    }
+
+    // Admin requests one or more documents from a volunteer, grouped as a batch
+    public function requestDocument(Request $request, $id)
+    {
+        $data = $request->validate([
+            'document_name' => ['required', 'string', 'max:255'],
+            'instructions'  => ['nullable', 'string', 'max:1000'],
+            'due_date'      => ['nullable', 'date'],
+        ]);
+
+        $names = array_filter(array_map('trim', preg_split('/[,;\n]+/', $data['document_name'])), fn ($n) => $n !== '');
+        $maxFiles = max(1, count($names));
+        if ($maxFiles > 10) {
+            return back()->withErrors(['document_name' => 'Hanggang 10 files lang ang pwedeng hilingin (paghiwalayin ng comma).']);
+        }
+
+        $volunteer = User::findOrFail($id);
+
+        DocumentRequest::create([
+            'user_id'       => $volunteer->id,
+            'requested_by'  => $request->user()->id,
+            'document_name' => $data['document_name'],
+            'instructions'  => $data['instructions'] ?? null,
+            'due_date'      => $data['due_date'] ?? null,
+            'max_files'     => $maxFiles,
+            'status'        => 'pending_submission',
+        ]);
+
+        Notification::create([
+            'user_id'      => $volunteer->id,
+            'category'     => 'system',
+            'title'        => 'Document Requested',
+            'message'      => "An administrator requested: {$data['document_name']}.",
+            'action_label' => 'View documents',
+            'action_url'   => route('volunteer.file201'),
+        ]);
+
+        return back()->with('success', 'Document request sent to volunteer.');
     }
 }

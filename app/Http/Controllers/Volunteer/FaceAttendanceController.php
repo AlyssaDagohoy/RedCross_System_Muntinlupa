@@ -5,11 +5,19 @@ namespace App\Http\Controllers\Volunteer;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\Activity;
+use App\Notifications\AttendanceRecorded;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class FaceAttendanceController extends Controller
 {
+    /**
+     * Max face distance that still counts as "the same person".
+     * Lower = stricter. 0.6 (the library default) is loose enough that different
+     * people can pass. 0.45 is a safer start; raise to 0.5 if you get rejected too often.
+     */
+    private const FACE_MATCH_THRESHOLD = 0.45;
     public function registerFace(Request $request)
     {
         $request->validate([
@@ -28,38 +36,47 @@ class FaceAttendanceController extends Controller
     public function timeIn(Request $request)
     {
         $request->validate([
-            'activity_id'    => 'required|exists:activities,id',
-            'face_descriptor'=> 'required|array',
-            'latitude'       => 'required|numeric',
-            'longitude'      => 'required|numeric',
+            'activity_id'       => 'required|exists:activities,id',
+            'face_descriptor'   => 'required|array',
+            'face_descriptor.*' => 'numeric',
+            'latitude'          => 'required|numeric',
+            'longitude'         => 'required|numeric',
         ]);
 
         $user = auth()->user();
 
-        if (!$user->face_descriptor) {
-            return back()->withErrors(['face' => 'Face not registered. Please register your face first.']);
+        if ($error = $this->faceError($user, $request->face_descriptor)) {
+            return back()->withErrors(['face' => $error]);
         }
 
-        $stored = json_decode($user->face_descriptor, true);
-        $incoming = $request->face_descriptor;
-        $distance = $this->euclideanDistance($stored, $incoming);
+        // The activity must be assigned to this volunteer and scheduled for today.
+        $activity = $user->activities()
+            ->where('activities.id', $request->activity_id)
+            ->whereDate('activities.date', today())
+            ->where('activities.status', '!=', 'cancelled')
+            ->first();
 
-        if ($distance > 0.6) {
-            return back()->withErrors(['face' => 'Face not recognized. Please try again.']);
+        if (!$activity) {
+            return back()->withErrors(['face' => 'This activity is not assigned to you or is not scheduled for today.']);
         }
 
-        $activity = Activity::findOrFail($request->activity_id);
-        $dist = $this->haversineDistance(
-            $request->latitude, $request->longitude,
-            $activity->latitude, $activity->longitude
-        );
+        // Time In window: opens 30 minutes before the start, closes when the activity ends.
+        $now = Carbon::now();
 
-        if ($dist > $activity->radius_meters) {
-            return back()->withErrors(['face' => "You are too far from the activity location. You are {$dist}m away. Allowed: {$activity->radius_meters}m."]);
+        if ($now->lt($activity->timeInOpensAt())) {
+            return back()->withErrors(['face' => 'Time in is not open yet. You can time in starting ' . $activity->timeInOpensAt()->format('g:i A') . '.']);
+        }
+
+        if ($now->gt($activity->endsAt())) {
+            return back()->withErrors(['face' => 'This activity has already ended, so time in is closed.']);
+        }
+
+        if ($error = $this->locationError($activity, $request->latitude, $request->longitude)) {
+            return back()->withErrors(['face' => $error]);
         }
 
         $existing = Attendance::where('user_id', $user->id)
-            ->where('activity_id', $request->activity_id)
+            ->where('activity_id', $activity->id)
             ->whereDate('date', today())
             ->first();
 
@@ -68,13 +85,19 @@ class FaceAttendanceController extends Controller
         }
 
         Attendance::create([
-            'user_id'     => $user->id,
-            'activity_id' => $request->activity_id,
-            'date'        => today(),
-            'time_in'     => Carbon::now(),
-            'latitude'    => $request->latitude,
-            'longitude'   => $request->longitude,
+            'user_id'           => $user->id,
+            'activity_id'       => $activity->id,
+            'date'              => today(),
+            'time_in'           => Carbon::now(),
+            'latitude'          => $request->latitude,
+            'longitude'         => $request->longitude,
+            'attendance_method' => 'face',
+            'status'            => 'present',
         ]);
+
+        // The attendance is already saved at this point, so a notification problem
+        // must not turn a successful Time In into a 500 error.
+        $this->notifySafely($user, new AttendanceRecorded('time_in', $activity->name));
 
         return back()->with('message', 'Time in recorded successfully!');
     }
@@ -82,30 +105,23 @@ class FaceAttendanceController extends Controller
     public function timeOut(Request $request)
     {
         $request->validate([
-            'activity_id'    => 'required|exists:activities,id',
-            'face_descriptor'=> 'required|array',
-            'latitude'       => 'required|numeric',
-            'longitude'      => 'required|numeric',
+            'activity_id'       => 'required|exists:activities,id',
+            'face_descriptor'   => 'required|array',
+            'face_descriptor.*' => 'numeric',
+            'latitude'          => 'required|numeric',
+            'longitude'         => 'required|numeric',
         ]);
 
         $user = auth()->user();
 
-        $stored = json_decode($user->face_descriptor, true);
-        $incoming = $request->face_descriptor;
-        $distance = $this->euclideanDistance($stored, $incoming);
-
-        if ($distance > 0.6) {
-            return back()->withErrors(['face' => 'Face not recognized. Please try again.']);
+        if ($error = $this->faceError($user, $request->face_descriptor)) {
+            return back()->withErrors(['face' => $error]);
         }
 
         $activity = Activity::findOrFail($request->activity_id);
-        $dist = $this->haversineDistance(
-            $request->latitude, $request->longitude,
-            $activity->latitude, $activity->longitude
-        );
 
-        if ($dist > $activity->radius_meters) {
-            return back()->withErrors(['face' => "You are too far from the activity location. You are {$dist}m away. Allowed: {$activity->radius_meters}m."]);
+        if ($error = $this->locationError($activity, $request->latitude, $request->longitude)) {
+            return back()->withErrors(['face' => $error]);
         }
 
         $record = Attendance::where('user_id', $user->id)
@@ -113,7 +129,7 @@ class FaceAttendanceController extends Controller
             ->whereDate('date', today())
             ->first();
 
-        if (!$record || $record->time_out) {
+        if (!$record || !$record->time_in || $record->time_out) {
             return back()->withErrors(['face' => 'No valid time-in found for this activity.']);
         }
 
@@ -136,10 +152,74 @@ class FaceAttendanceController extends Controller
             'left_early'     => $leftEarly,
         ]);
 
+        // Same protection as Time In: the record is saved, so don't fail the request.
+        $this->notifySafely($user, new AttendanceRecorded('time_out', $activity->name, $hours, $leftEarly));
+
         return back()->with('message', $leftEarly
             ? "Time out recorded (left early). Hours rendered: {$hours}"
             : "Time out recorded! Hours rendered: {$hours}"
         );
+    }
+
+    /**
+     * Sends a notification without letting a failure break the request.
+     * If it fails, the real error is written to storage/logs/laravel.log
+     * under "AttendanceRecorded notification failed".
+     */
+    private function notifySafely($user, $notification): void
+    {
+        try {
+            $user->notify($notification);
+        } catch (\Throwable $e) {
+            Log::error('AttendanceRecorded notification failed: ' . $e->getMessage(), [
+                'user_id'   => $user->id,
+                'exception' => $e,
+            ]);
+        }
+    }
+
+    /** Returns an error message, or null when the face matches the registered one. */
+    private function faceError($user, array $incoming): ?string
+    {
+        if (!$user->face_descriptor) {
+            return 'Face not registered. Please register your face first.';
+        }
+
+        $stored = json_decode($user->face_descriptor, true);
+
+        if (!is_array($stored) || count($stored) !== count($incoming)) {
+            return 'Face data is invalid. Please try again.';
+        }
+
+        $distance = $this->euclideanDistance($stored, $incoming);
+
+        // Logged so you can see real numbers: your own face vs. someone else's.
+        Log::info('Face match distance', [
+            'user_id'   => $user->id,
+            'distance'  => round($distance, 3),
+            'threshold' => self::FACE_MATCH_THRESHOLD,
+        ]);
+
+        if ($distance > self::FACE_MATCH_THRESHOLD) {
+            return 'Face not recognized. Please try again.';
+        }
+
+        return null;
+    }
+
+    /** Returns an error message, or null when the volunteer is inside the activity's allowed radius. */
+    private function locationError(Activity $activity, $latitude, $longitude): ?string
+    {
+        $dist = $this->haversineDistance(
+            $latitude, $longitude,
+            $activity->latitude, $activity->longitude
+        );
+
+        if ($dist > $activity->radius_meters) {
+            return "You are too far from the activity location. You are {$dist}m away. Allowed: {$activity->radius_meters}m.";
+        }
+
+        return null;
     }
 
     private function euclideanDistance(array $a, array $b): float

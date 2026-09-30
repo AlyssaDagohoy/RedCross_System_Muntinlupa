@@ -13,7 +13,7 @@ class CommunicationController extends Controller
 {
     public function index()
     {
-        $messages = SentEmail::with('user')
+        $messages = SentEmail::with('user', 'messages')
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -33,10 +33,24 @@ class CommunicationController extends Controller
             'reply' => 'required|string',
         ]);
 
+        // Kept for backward compatibility with anything still reading the
+        // single reply/replied_at columns.
         $sentEmail->update([
             'reply'      => $request->reply,
             'replied_at' => now(),
         ]);
+
+        // This is the part that actually makes it show up in the volunteer's
+        // Inbox — the volunteer side reads from communication_messages now,
+        // not from the reply column above.
+        $sentEmail->messages()->create([
+            'sender_type' => 'admin',
+            'body'        => $request->reply,
+        ]);
+
+        // Re-activate the inbox side in case the volunteer had archived/trashed
+        // this thread — a fresh reply should bring it back into view.
+        $sentEmail->update(['inbox_status' => 'active']);
 
         return back()->with('success', 'Reply sent!');
     }

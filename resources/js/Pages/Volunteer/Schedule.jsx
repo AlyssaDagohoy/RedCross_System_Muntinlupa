@@ -1,335 +1,610 @@
-import { Head, Link, router } from '@inertiajs/react';
-import { useState } from 'react';
+﻿import { Link, router } from '@inertiajs/react';
+import { useMemo, useState, useRef, useEffect } from 'react';
+import VolunteerShell, { useVolunteerShell } from '../../Components/VolunteerShell';
+import { AttendanceCapture } from '../../Components/FaceAttendance';
+
+const FILTERS = [
+    { key: 'assigned', label: 'Assigned', dot: '#3b82f6' },
+    { key: 'ongoing', label: 'Ongoing', dot: '#f59e0b' },
+    { key: 'upcoming', label: 'Upcoming', dot: '#8b5cf6' },
+    { key: 'completed', label: 'Completed', dot: '#22c55e' },
+    { key: 'missed', label: 'Missed', dot: '#9ca3af' },
+    { key: 'cancelled', label: 'Cancelled', dot: '#ef4444' },
+];
+
+const VALID_TABS = FILTERS.map(f => f.key);
+
+function useIsMobile(breakpoint = 768) {
+    const [m, setM] = useState(typeof window !== 'undefined' && window.innerWidth <= breakpoint);
+    useEffect(() => {
+        const on = () => setM(window.innerWidth <= breakpoint);
+        on();
+        window.addEventListener('resize', on);
+        return () => window.removeEventListener('resize', on);
+    }, [breakpoint]);
+    return m;
+}
+
+function getInitialTab() {
+    if (typeof window === 'undefined') return 'assigned';
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    return VALID_TABS.includes(tab) ? tab : 'assigned';
+}
+
+function isActivityDue(dateStr) {
+    const activityDate = new Date(dateStr);
+    activityDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return activityDate <= today;
+}
+
+function getBucket(act) {
+    const status = (act.status || 'assigned').toLowerCase();
+    if (status === 'completed') return 'completed';
+    if (status === 'cancelled') return 'cancelled';
+    if (status === 'ongoing') return 'ongoing';
+    if (status === 'missed') return 'missed';
+    return isActivityDue(act.date) ? 'assigned' : 'upcoming';
+}
+
+// Groups a sorted activity list into [{ label: 'September 2026', items: [...] }, ...]
+// preserving whatever order the activities already came in.
+function groupByMonth(list) {
+    const groups = [];
+    let current = null;
+    for (const act of list) {
+        const d = new Date(act.date);
+        const key = `${d.getFullYear()}-${d.getMonth()}`;
+        if (!current || current.key !== key) {
+            current = {
+                key,
+                label: d.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }),
+                items: [],
+            };
+            groups.push(current);
+        }
+        current.items.push(act);
+    }
+    return groups;
+}
 
 export default function VolunteerSchedule({ auth, activities }) {
-    const volunteer = auth.user;
     const acts = activities || [];
+    const [filter, setFilter] = useState(getInitialTab);
+    const [viewMode, setViewMode] = useState('row'); // 'row' | 'card'
+    const isMobile = useIsMobile();
+    const [dropOpen, setDropOpen] = useState(false);
+    const [openId, setOpenId] = useState(null); // expanded row/card (inline details)
+    const tabRefs = useRef({});
+    const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
-    const today = new Date();
-    const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-    const [currentYear, setCurrentYear] = useState(today.getFullYear());
-    const [selectedActivity, setSelectedActivity] = useState(null);
-    const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
+    const [activeCapture, setActiveCapture] = useState(null); // { activityId, mode }
 
-    const handleLogout = () => {
-        document.getElementById('logout-form').submit();
-    };
+    const toggleOpen = (id) => setOpenId((cur) => (cur === id ? null : id));
 
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const dayNames = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+    const filteredActs = useMemo(() => {
+        return acts.filter(a => getBucket(a) === filter);
+    }, [acts, filter]);
 
-    const prevMonth = () => {
-        if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(y => y - 1); }
-        else setCurrentMonth(m => m - 1);
-    };
-    const nextMonth = () => {
-        if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(y => y + 1); }
-        else setCurrentMonth(m => m + 1);
-    };
+    const sorted = useMemo(() => {
+        return [...filteredActs].sort((a, b) => {
+            if (a.date !== b.date) {
+                return a.date > b.date ? -1 : 1;
+            }
+            const aTime = a.time_out ? new Date(a.time_out).getTime() : 0;
+            const bTime = b.time_out ? new Date(b.time_out).getTime() : 0;
+            return bTime - aTime;
+        });
+    }, [filteredActs]);
 
-    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const calendarCells = [];
-    for (let i = 0; i < firstDay; i++) calendarCells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) calendarCells.push(d);
-    while (calendarCells.length % 7 !== 0) calendarCells.push(null);
+    const monthGroups = useMemo(() => groupByMonth(sorted), [sorted]);
 
-    const actsByDate = {};
-    acts.forEach(act => {
-        const key = act.date?.substring(0, 10);
-        if (!actsByDate[key]) actsByDate[key] = [];
-        actsByDate[key].push(act);
-    });
+    const filterCount = (f) => acts.filter(a => getBucket(a) === f).length;
+    const currentFilter = FILTERS.find(x => x.key === filter) || FILTERS[0];
 
-    const chipColors = ['#CC0000','#16a34a','#3B82F6','#8B5CF6','#F59E0B','#14B8A6'];
-    const getColor = (id) => chipColors[id % chipColors.length];
-
-    const handleChipClick = (e, act) => {
-        e.stopPropagation();
-        const rect = e.target.getBoundingClientRect();
-        let left = rect.right + 10;
-        let top = rect.top - 10;
-        if (left + 280 > window.innerWidth) left = rect.left - 290;
-        if (top + 380 > window.innerHeight) top = window.innerHeight - 390;
-        if (top < 60) top = 60;
-        setPopupPos({ top, left });
-        setSelectedActivity(act);
-    };
-
-    const sidebarLinks = [
-        { key: 'dashboard',     label: 'Dashboard',  href: route('volunteer.dashboard'),     icon: <DashIcon /> },
-        { key: 'schedule',      label: 'Schedule',   href: route('volunteer.schedule'),      icon: <CalIcon /> },
-        { key: 'communication', label: 'Messages',   href: route('volunteer.communication'), icon: <MsgIcon /> },
-        { key: 'attendance',    label: 'Attendance', href: route('volunteer.attendance'),    icon: <ClockIcon /> },
-        { key: 'documents',     label: '301 Docs',   href: route('volunteer.documents'),     icon: <DocIcon /> },
-    ];
+    useEffect(() => {
+        const el = tabRefs.current[filter];
+        if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+    }, [filter, acts.length]);
 
     return (
-        <>
-            <Head title="Schedule" />
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-            <style>{`
-                * { box-sizing: border-box; margin: 0; padding: 0; }
-                body { background: #f7f7f8; }
-                .nav-link:hover { background: rgba(0,0,0,0.12) !important; }
-                .cal-cell:hover { background: #fafafa !important; }
-                .chip:hover { opacity: 0.85; }
-                ::-webkit-scrollbar { width: 4px; }
-                ::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 4px; }
-            `}</style>
+        <VolunteerShell active="schedule" title="My Schedule" notifications={[]}>
 
-            <form id="logout-form" method="POST" action={route('logout')} style={{ display: 'none' }}>
-                <input type="hidden" name="_token" value={document.querySelector('meta[name="csrf-token"]')?.content} />
-            </form>
-
-            <div
-                style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', sans-serif", background: '#f7f7f8' }}
-                onClick={() => setSelectedActivity(null)}
-            >
-                {/* SIDEBAR */}
-                <aside style={{
-                    width: '210px', position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 100,
-                    background: '#CC0000', display: 'flex', flexDirection: 'column',
-                    boxShadow: '4px 0 20px rgba(204,0,0,0.15)',
-                }}>
-                    <div style={{ padding: '28px 22px 22px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-                            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '11px', fontWeight: '600', color: 'white' }}>Red Cross</div>
-                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', marginTop: '1px' }}>Muntinlupa Branch</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <nav style={{ flex: 1, padding: '12px 10px' }}>
-                        <div style={{ fontSize: '9px', fontWeight: '600', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', textTransform: 'uppercase', padding: '0 12px', marginBottom: '6px' }}>Menu</div>
-                        {sidebarLinks.map(item => {
-                            const isActive = item.key === 'schedule';
-                            return (
-                                <Link key={item.key} href={item.href} className="nav-link" style={{
-                                    display: 'flex', alignItems: 'center', gap: '10px',
-                                    padding: '9px 12px', textDecoration: 'none', borderRadius: '7px',
-                                    marginBottom: '2px',
-                                    background: isActive ? 'rgba(0,0,0,0.18)' : 'transparent',
-                                    color: 'white', fontSize: '12px',
-                                    fontWeight: isActive ? '600' : '400',
-                                    borderLeft: isActive ? '3px solid white' : '3px solid transparent',
-                                    transition: 'all 0.15s',
-                                }}>
-                                    <span style={{ opacity: isActive ? 1 : 0.7, flexShrink: 0 }}>{item.icon}</span>
-                                    {item.label}
-                                </Link>
-                            );
-                        })}
-                    </nav>
-
-                    <div style={{ padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '10px', padding: '0 4px' }}>
-                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600', flexShrink: 0 }}>
-                                {volunteer?.name?.charAt(0).toUpperCase()}
-                            </div>
-                            <div style={{ overflow: 'hidden' }}>
-                                <div style={{ fontSize: '11px', fontWeight: '500', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{volunteer?.name}</div>
-                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)' }}>Volunteer</div>
-                            </div>
-                        </div>
-                        <button onClick={handleLogout} style={{
-                            width: '100%', padding: '7px 12px', borderRadius: '7px',
-                            background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.15)',
-                            color: 'rgba(255,255,255,0.75)', fontSize: '11px', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '7px',
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '18px', flexWrap: 'wrap' }}>
+                {/* Segmented filter control */}
+                {isMobile ? (
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                        <button type="button" aria-expanded={dropOpen} onClick={() => setDropOpen(o => !o)} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '10px',
+                            padding: '12px 14px', background: 'white', border: '1.5px solid #CC0000', borderRadius: '10px',
+                            cursor: 'pointer', fontFamily: 'inherit', fontSize: '12.5px', color: '#111',
                         }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                            Sign out
-                        </button>
-                    </div>
-                </aside>
-
-                {/* MAIN */}
-                <div style={{ marginLeft: '210px', flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-
-                    {/* Topbar */}
-                    <header style={{
-                        height: '54px', background: 'white', borderBottom: '1px solid #ebebeb',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '0 28px', position: 'sticky', top: 0, zIndex: 50, flexShrink: 0,
-                    }}>
-                        <div>
-                            <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Schedule</span>
-                            <span style={{ fontSize: '11px', color: '#bbb', margin: '0 6px' }}>·</span>
-                            <span style={{ fontSize: '11px', color: '#aaa' }}>
-                                {new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: currentFilter.dot, flexShrink: 0 }} />
+                                <span style={{ fontWeight: '600' }}>{currentFilter.label}</span>
+                                <span style={{ color: '#888' }}>{'\u00B7'} {filterCount(filter)}</span>
                             </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ position: 'relative' }}>
-                                <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                <input
-                                    placeholder="Search activities..."
-                                    style={{ border: '1px solid #ebebeb', borderRadius: '8px', padding: '6px 12px 6px 28px', fontSize: '11px', width: '180px', outline: 'none', background: '#f9f9f9', color: '#333' }}
-                                />
-                            </div>
-                            <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600' }}>
-                                {volunteer?.name?.charAt(0).toUpperCase()}
-                            </div>
-                        </div>
-                    </header>
-
-                    {/* Calendar */}
-                    <main style={{ flex: 1, padding: '20px 28px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
-
-                            {/* Month Nav */}
-                            <div style={{ padding: '13px 20px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f5f5f5', flexShrink: 0 }}>
-                                <button onClick={(e) => { e.stopPropagation(); prevMonth(); }} style={{ background: 'none', border: '1px solid #ebebeb', cursor: 'pointer', color: '#999', fontSize: '14px', width: '26px', height: '26px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>‹</button>
-                                <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', minWidth: '130px' }}>
-                                    {monthNames[currentMonth]} {currentYear}
-                                </div>
-                                <button onClick={(e) => { e.stopPropagation(); nextMonth(); }} style={{ background: 'none', border: '1px solid #ebebeb', cursor: 'pointer', color: '#999', fontSize: '14px', width: '26px', height: '26px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>›</button>
-                                <div style={{ marginLeft: 'auto', fontSize: '10px', color: '#aaa' }}>
-                                    {acts.length} activit{acts.length !== 1 ? 'ies' : 'y'} this month
-                                </div>
-                            </div>
-
-                            {/* Day Headers */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #f5f5f5', flexShrink: 0 }}>
-                                {dayNames.map((d, i) => (
-                                    <div key={d} style={{
-                                        padding: '8px 10px', fontSize: '9px', fontWeight: '600',
-                                        color: i === 0 ? '#CC0000' : '#bbb',
-                                        textAlign: 'center', letterSpacing: '0.8px', textTransform: 'uppercase',
-                                    }}>{d}</div>
+                            <Chevron open={dropOpen} />
+                        </button>
+                        {dropOpen && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '6px', minWidth: '170px', zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', background: 'white', border: '1px solid #ebebeb', borderRadius: '10px', overflow: 'hidden' }}>
+                                {FILTERS.map((f, i) => (
+                                    <button key={f.key} type="button" onClick={() => { setFilter(f.key); setOpenId(null); setDropOpen(false); }} style={{
+                                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+                                        padding: '12px 14px', background: filter === f.key ? '#fafafa' : 'white',
+                                        borderLeft: 'none', borderRight: 'none', borderBottom: 'none',
+                                        borderTop: i > 0 ? '1px solid #f5f5f5' : 'none',
+                                        cursor: 'pointer', fontFamily: 'inherit', fontSize: '12.5px', color: '#111', textAlign: 'left',
+                                    }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: f.dot, flexShrink: 0 }} />
+                                            <span style={{ fontWeight: filter === f.key ? '600' : '400' }}>{f.label}</span>
+                                        </span>
+                                        <span style={{ color: '#888', fontSize: '12px' }}>{filterCount(f.key)}</span>
+                                    </button>
                                 ))}
                             </div>
-
-                            {/* Grid */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', flex: 1 }}>
-                                {calendarCells.map((day, idx) => {
-                                    const dateKey = day
-                                        ? `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-                                        : null;
-                                    const dayActs = dateKey ? (actsByDate[dateKey] || []) : [];
-                                    const isToday = day && today.getDate() === day && today.getMonth() === currentMonth && today.getFullYear() === currentYear;
-                                    const isSunday = idx % 7 === 0;
-
-                                    return (
-                                        <div key={idx} className="cal-cell" style={{
-                                            minHeight: '80px',
-                                            padding: '7px 8px',
-                                            borderRight: (idx + 1) % 7 !== 0 ? '0.5px solid #f5f5f5' : 'none',
-                                            borderBottom: idx < calendarCells.length - 7 ? '0.5px solid #f5f5f5' : 'none',
-                                            background: day ? 'white' : '#fafafa',
-                                            overflow: 'hidden',
-                                            transition: 'background 0.1s',
-                                        }}>
-                                            {day && (
-                                                <>
-                                                    <div style={{
-                                                        fontSize: '11px', fontWeight: isToday ? '700' : '400',
-                                                        color: isToday ? 'white' : isSunday ? '#CC0000' : '#333',
-                                                        width: '22px', height: '22px', borderRadius: '50%',
-                                                        background: isToday ? '#CC0000' : 'transparent',
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        marginBottom: '4px',
-                                                    }}>{day}</div>
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                        {dayActs.slice(0, 2).map(act => (
-                                                            <div
-                                                                key={act.id}
-                                                                className="chip"
-                                                                onClick={(e) => handleChipClick(e, act)}
-                                                                style={{
-                                                                    background: getColor(act.id), color: 'white',
-                                                                    borderRadius: '3px', padding: '2px 5px',
-                                                                    fontSize: '9px', fontWeight: '600', cursor: 'pointer',
-                                                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                                                                    transition: 'opacity 0.1s',
-                                                                }}
-                                                                title={act.name}
-                                                            >
-                                                                {act.name}
-                                                            </div>
-                                                        ))}
-                                                        {dayActs.length > 2 && (
-                                                            <div style={{ fontSize: '9px', color: '#bbb', fontWeight: '500' }}>+{dayActs.length - 2} more</div>
-                                                        )}
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </main>
+                        )}
+                    </div>
+                ) : (
+                <div style={{
+                    position: 'relative', display: 'inline-flex', alignItems: 'center',
+                    background: '#f2f2f3', borderRadius: '11px', padding: '3px',
+                    gap: '2px', flexWrap: 'wrap',
+                }}>
+                    <span style={{
+                        position: 'absolute', top: '3px', bottom: '3px',
+                        left: indicator.left, width: indicator.width,
+                        background: 'white', borderRadius: '8px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                        transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
+                    }} />
+                    {FILTERS.map(f => {
+                        const active = filter === f.key;
+                        const count = filterCount(f.key);
+                        return (
+                            <button
+                                key={f.key}
+                                ref={(el) => { tabRefs.current[f.key] = el; }}
+                                type="button"
+                                onClick={() => { setFilter(f.key); setOpenId(null); }}
+                                style={{
+                                    position: 'relative', zIndex: 1,
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    padding: '7px 13px', border: 'none', background: 'transparent',
+                                    cursor: 'pointer', fontFamily: 'inherit', borderRadius: '8px',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                {f.dot && (
+                                    <span style={{
+                                        width: '5px', height: '5px', borderRadius: '50%',
+                                        background: f.dot, flexShrink: 0,
+                                        opacity: active ? 1 : 0.55,
+                                    }} />
+                                )}
+                                <span style={{
+                                    fontSize: '11.5px', fontWeight: active ? '600' : '500',
+                                    color: active ? '#111' : '#888',
+                                    transition: 'color 0.15s',
+                                }}>{f.label}</span>
+                                <span style={{
+                                    fontSize: '10px', fontWeight: '600',
+                                    color: active ? '#aaa' : '#bbb',
+                                }}>{count}</span>
+                            </button>
+                        );
+                    })}
                 </div>
+                )}
+
+                {/* Row / Card view toggle */}
+                {!isMobile && (
+                <div style={{ display: 'inline-flex', background: '#f2f2f3', borderRadius: '9px', padding: '3px', gap: '2px' }}>
+                    <button
+                        type="button"
+                        onClick={() => setViewMode('row')}
+                        title="Row view"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '5px',
+                            padding: '6px 11px', border: 'none', borderRadius: '7px',
+                            background: viewMode === 'row' ? 'white' : 'transparent',
+                            boxShadow: viewMode === 'row' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                            cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                    >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={viewMode === 'row' ? '#CC0000' : '#999'} strokeWidth="2" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: viewMode === 'row' ? '#111' : '#888' }}>Row</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setViewMode('card')}
+                        title="Card view"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '5px',
+                            padding: '6px 11px', border: 'none', borderRadius: '7px',
+                            background: viewMode === 'card' ? 'white' : 'transparent',
+                            boxShadow: viewMode === 'card' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                            cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                    >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={viewMode === 'card' ? '#CC0000' : '#999'} strokeWidth="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: viewMode === 'card' ? '#111' : '#888' }}>Card</span>
+                    </button>
+                </div>
+                )}
             </div>
 
-            {/* POPUP */}
-            {selectedActivity && (
-                <div
-                    onClick={e => e.stopPropagation()}
-                    style={{
-                        position: 'fixed', top: popupPos.top, left: popupPos.left,
-                        width: '268px', background: 'white', borderRadius: '10px',
-                        border: '1px solid #ebebeb', boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                        zIndex: 300, overflow: 'hidden',
-                    }}
-                >
-                    <div style={{
-                        background: getColor(selectedActivity.id), padding: '11px 14px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    }}>
-                        <div style={{ fontSize: '11px', fontWeight: '600', color: 'white' }}>
-                            {new Date(selectedActivity.date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
-                        </div>
-                        <button onClick={() => setSelectedActivity(null)} style={{
-                            background: 'rgba(255,255,255,0.25)', border: 'none', borderRadius: '50%',
-                            color: 'white', fontSize: '10px', cursor: 'pointer',
-                            width: '18px', height: '18px', display: 'flex',
-                            alignItems: 'center', justifyContent: 'center', fontWeight: '700',
-                        }}>✕</button>
-                    </div>
-                    <div style={{ padding: '14px' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', marginBottom: '10px' }}>{selectedActivity.name}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '6px' }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            <span style={{ fontSize: '11px', color: '#555' }}>{selectedActivity.start_time?.substring(0,5)} – {selectedActivity.end_time?.substring(0,5)}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', marginBottom: '12px' }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                            <span style={{ fontSize: '11px', color: '#555', lineHeight: '1.5' }}>{selectedActivity.location_name || '—'}</span>
-                        </div>
-                        <div style={{ borderTop: '0.5px solid #f5f5f5', paddingTop: '10px', marginBottom: '10px' }}>
-                            <div style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Description</div>
-                            <div style={{ fontSize: '11px', color: '#555', lineHeight: '1.6' }}>{selectedActivity.description || 'No description provided.'}</div>
-                        </div>
-                        <div style={{ background: '#f9f9f9', borderRadius: '7px', padding: '8px 10px' }}>
-                            <span style={{ fontSize: '10px', fontWeight: '600', color: '#CC0000' }}>Assigned by: </span>
-                            <span style={{ fontSize: '10px', color: '#555' }}>{selectedActivity.assigned_by || 'Philippine Red Cross Admin'}</span>
-                        </div>
-                    </div>
+            {/* "View All" header shown only inside the Completed tab, links to My Reports */}
+            {filter === 'completed' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+                    <Link
+                        href={route('volunteer.records')}
+                        style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}
+                    >
+                        View All →
+                    </Link>
                 </div>
             )}
-        </>
+
+            {sorted.length === 0 ? (
+                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', padding: '40px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', color: '#ccc' }}>No activities found</div>
+                </div>
+            ) : (viewMode === 'row' && !isMobile) ? (
+                /* ---------------- Row view — grouped per month, click a row to expand details inline ---------------- */
+                monthGroups.map((group, gi) => (
+                    <div key={group.key} style={{ marginBottom: gi < monthGroups.length - 1 ? '18px' : 0 }}>
+                        <MonthDivider label={group.label} />
+                        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                            {group.items.map((act, i) => {
+                                const isOpen = openId === act.id;
+                                return (
+                                    <div
+                                        key={act.id}
+                                        style={{ borderBottom: i < group.items.length - 1 ? '1px solid #f5f5f5' : 'none' }}
+                                    >
+                                        <div
+                                            className="task-row"
+                                            onClick={() => toggleOpen(act.id)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                padding: '14px 18px', gap: '12px',
+                                                transition: 'background 0.1s', cursor: 'pointer',
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', minWidth: 0 }}>
+                                                <div style={{ width: '6px', height: '38px', borderRadius: '3px', background: '#CC0000', flexShrink: 0 }} />
+                                                <div style={{ minWidth: 0 }}>
+                                                    <div style={{ fontSize: '12.5px', fontWeight: '600', color: '#111' }}>{act.name}</div>
+                                                    <div style={{ fontSize: '10px', color: '#bbb', marginTop: '3px' }}>
+                                                        {new Date(act.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                        {act.start_time ? ` · ${act.start_time.substring(0, 5)}` : ''}
+                                                        {act.end_time ? `–${act.end_time.substring(0, 5)}` : ''}
+                                                        {act.location_name ? ` · ${act.location_name}` : ''}
+                                                    </div>
+                                                    {act.assignment && (
+                                                        <div style={{ fontSize: '10.5px', color: '#888', marginTop: '4px' }}>{act.assignment}</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div
+                                                style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <QuickAttendanceButton
+                                                    act={act}
+                                                    onStart={(activity, mode) => setActiveCapture({ activityId: activity.id, mode })}
+                                                />
+                                                <span onClick={() => toggleOpen(act.id)} style={{ display: 'flex', cursor: 'pointer' }}>
+                                                    <Chevron open={isOpen} />
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {isOpen && (
+                                            <div style={{ borderTop: '1px solid #f5f5f5', padding: '16px 18px', background: '#fafafa' }}>
+                                                <ScheduleDetails act={act} bucket={getBucket(act)} />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))
+            ) : (
+                /* ---------------- Card view — grouped per month, click a card to expand details inline ---------------- */
+                monthGroups.map((group, gi) => (
+                    <div key={group.key} style={{ marginBottom: gi < monthGroups.length - 1 ? '18px' : 0 }}>
+                        <MonthDivider label={group.label} />
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px', alignItems: 'start' }}>
+                            {group.items.map((act) => {
+                                const bucket = getBucket(act);
+                                const isOpen = openId === act.id;
+                                return (
+                                    <div
+                                        key={act.id}
+                                        onClick={() => toggleOpen(act.id)}
+                                        className="task-row"
+                                        style={{
+                                            background: 'white', borderRadius: '10px',
+                                            border: `1px solid ${isOpen ? '#f0d6d6' : '#ebebeb'}`,
+                                            boxShadow: isOpen ? '0 2px 10px rgba(204,0,0,0.06)' : 'none',
+                                            padding: '14px 16px 14px 18px', cursor: 'pointer', position: 'relative', overflow: 'hidden',
+                                            display: 'flex', flexDirection: 'column', gap: '8px',
+                                        }}
+                                    >
+                                        <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: '#CC0000' }} />
+
+                                        {/* Header: title + status badge */}
+                                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                                            <div style={{ fontSize: '12.5px', fontWeight: '600', color: '#111', lineHeight: '1.35' }}>{act.name}</div>
+                                            <StatusBadge bucket={bucket} />
+                                        </div>
+
+                                        {/* Date / time */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10.5px', color: '#999' }}>
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                            <span>
+                                                {new Date(act.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                {act.start_time ? ` · ${act.start_time.substring(0, 5)}` : ''}
+                                                {act.end_time ? `–${act.end_time.substring(0, 5)}` : ''}
+                                            </span>
+                                        </div>
+
+                                        {/* Location */}
+                                        {act.location_name && !isMobile && (
+                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '10.5px', color: '#999' }}>
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                                <span>{act.location_name}</span>
+                                            </div>
+                                        )}
+
+                                        {isMobile ? null : isOpen ? (
+                                            /* Expanded: full details in a column */
+                                            <div
+                                                onClick={(e) => e.stopPropagation()}
+                                                style={{ borderTop: '1px solid #f5f5f5', paddingTop: '10px', marginTop: '2px', cursor: 'default' }}
+                                            >
+                                                <ScheduleDetails act={act} bucket={bucket} compact />
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {/* Assignment preview */}
+                                                {act.assignment && (
+                                                    <div style={{ fontSize: '10.5px', color: '#888', lineHeight: '1.5', paddingTop: '2px', borderTop: '1px solid #f5f5f5', marginTop: '2px' }}>
+                                                        <span style={{ fontWeight: '600', color: '#aaa' }}>Assignment: </span>{act.assignment}
+                                                    </div>
+                                                )}
+
+                                                {/* Description preview — truncated to 2 lines */}
+                                                {act.description && (
+                                                    <div style={{
+                                                        fontSize: '10.5px', color: '#999', lineHeight: '1.5',
+                                                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                                                    }}>
+                                                        {act.description}
+                                                    </div>
+                                                )}
+
+                                                {/* Assigned by */}
+                                                {act.assigned_by && (
+                                                    <div style={{ fontSize: '10px', color: '#bbb' }}>
+                                                        <span style={{ fontWeight: '600', color: '#CC0000' }}>By: </span>{act.assigned_by}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+
+                                        <div onClick={(e) => e.stopPropagation()} style={{ marginTop: '2px' }}>
+                                            <QuickAttendanceButton
+                                                act={act}
+                                                onStart={(activity, mode) => setActiveCapture({ activityId: activity.id, mode })}
+                                            />
+                                        </div>
+                                        {isMobile && (
+                                            <div data-mobile-details="1" onClick={(e) => e.stopPropagation()}>
+                                                <button type="button" aria-expanded={isOpen} onClick={() => toggleOpen(act.id)} style={{
+                                                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '10px 0 0', marginTop: '2px', background: 'none', border: 'none',
+                                                    borderTop: '1px solid #f5f5f5', cursor: 'pointer', fontFamily: 'inherit',
+                                                    fontSize: '11px', fontWeight: '600', color: '#888',
+                                                }}>
+                                                    <span>{isOpen ? 'Hide details' : 'Details'}</span>
+                                                    <Chevron open={isOpen} />
+                                                </button>
+                                                {isOpen && (
+                                                    <div style={{ paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                        {act.location_name && (
+                                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                                                <div style={{ color: '#bbb', marginTop: '2px', flexShrink: 0 }}><PinIcon /></div>
+                                                                <div style={{ minWidth: 0 }}>
+                                                                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Location</div>
+                                                                    <div style={{ fontSize: '12.5px', color: '#222', marginTop: '2px', lineHeight: '1.5', wordBreak: 'break-word' }}>{act.location_name}</div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        <ScheduleDetails act={act} bucket={bucket} compact />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))
+            )}
+
+            {/* Face-scan overlay — opened directly from a row/card's Time In/Out button */}
+            {activeCapture && (
+                <AttendanceCapture
+                    mode={activeCapture.mode}
+                    activityId={activeCapture.activityId}
+                    onClose={() => setActiveCapture(null)}
+                    onSuccess={() => {
+                        setActiveCapture(null);
+                        router.reload({ only: ['activities'] });
+                    }}
+                />
+            )}
+
+        </VolunteerShell>
     );
 }
 
-function DashIcon() {
-    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
+/* ---------------- Month divider — a labeled line separating activity groups by month ---------------- */
+
+function MonthDivider({ label }) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 0 10px' }}>
+            <span style={{ fontSize: '10.5px', fontWeight: '700', color: '#999', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>{label}</span>
+            <div style={{ flex: 1, height: '1px', background: '#ebebeb' }} />
+        </div>
+    );
 }
-function CalIcon() {
-    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+
+/* ---------------- Inline details — stacked in a single column ---------------- */
+
+function ScheduleDetails({ act, bucket, compact }) {
+    const fmtDate = new Date(act.date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+    const time = act.start_time || act.end_time
+        ? `${act.start_time ? act.start_time.substring(0, 5) : '—'} – ${act.end_time ? act.end_time.substring(0, 5) : '—'}`
+        : '—';
+
+    const fields = [
+        ...(compact ? [] : [{ icon: <CalendarIcon />, label: 'Date', value: fmtDate }]),
+        ...(compact ? [] : [{ icon: <ClockIcon />, label: 'Time', value: time }]),
+        ...(compact ? [] : [{ icon: <PinIcon />, label: 'Location', value: act.location_name }]),
+        { icon: <ClipboardIcon />, label: 'Assignment', value: act.assignment || 'No assignment specified.' },
+        { icon: <TextIcon />, label: 'Description', value: act.description || 'No description provided.' },
+        { icon: <UserIcon />, label: 'Assigned By', value: act.assigned_by || 'Philippine Red Cross Admin' },
+    ];
+
+    return (
+        <div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {fields.map((f) => (
+                    <div key={f.label} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                        <div style={{ color: '#bbb', marginTop: '2px', flexShrink: 0 }}>{f.icon}</div>
+                        <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{f.label}</div>
+                            <div style={{ fontSize: '12.5px', color: '#222', marginTop: '2px', lineHeight: '1.5', wordBreak: 'break-word' }}>{f.value ?? '—'}</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            {!compact && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingTop: '12px', marginTop: '14px', borderTop: '1px solid #f0f0f0' }}>
+                    <span style={{ fontSize: '10.5px', fontWeight: '600', color: '#999' }}>Status:</span>
+                    <StatusBadge bucket={bucket} />
+                </div>
+            )}
+        </div>
+    );
 }
-function MsgIcon() {
-    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
+
+function Chevron({ open }) {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+            <polyline points="6 9 12 15 18 9" />
+        </svg>
+    );
 }
+
+/* ---------------- Status badge ---------------- */
+
+function StatusBadge({ bucket }) {
+    const map = {
+        assigned:  { label: 'Assigned',  bg: '#eff6ff', color: '#3b82f6' },
+        ongoing:   { label: 'Ongoing',   bg: '#fffbeb', color: '#b45309' },
+        upcoming:  { label: 'Upcoming',  bg: '#f5f3ff', color: '#8b5cf6' },
+        completed: { label: 'Completed', bg: '#f0fdf4', color: '#16a34a' },
+        missed:    { label: 'Missed',    bg: '#f4f4f5', color: '#71717a' },
+        cancelled: { label: 'Cancelled', bg: '#fef2f2', color: '#DC2626' },
+    };
+    const s = map[bucket] || map.assigned;
+    return (
+        <span style={{
+            fontSize: '9px', fontWeight: '600', padding: '3px 8px', borderRadius: '10px',
+            background: s.bg, color: s.color, whiteSpace: 'nowrap', flexShrink: 0,
+        }}>
+            {s.label}
+        </span>
+    );
+}
+
+/* ---------------- Time In / Time Out button on a schedule row/card ---------------- */
+
+function QuickAttendanceButton({ act, onStart }) {
+    const { setup } = useVolunteerShell();
+    const faceReady = !!setup.face_done;
+    const status = (act.status || 'assigned').toLowerCase();
+
+    const base = {
+        fontSize: '10px', fontWeight: '600', borderRadius: '5px', padding: '5px 12px',
+        fontFamily: 'inherit', whiteSpace: 'nowrap', border: '1px solid #CC0000', cursor: 'pointer',
+    };
+
+    if (status === 'completed' || status === 'cancelled' || status === 'missed') {
+        return null;
+    }
+
+    const timedIn = status === 'ongoing';
+    const label = timedIn ? 'Time Out' : 'Time In';
+
+    if (!timedIn && !isActivityDue(act.date)) {
+        return null;
+    }
+
+    if (!faceReady) {
+        return (
+            <span
+                aria-disabled="true"
+                title={setup.face_pending ? 'Waiting for admin approval of your face registration' : 'Register your face to use Time In and Time Out'}
+                style={{ ...base, background: '#f5f5f5', color: '#bbb', border: '1px solid #f0f0f0', cursor: 'not-allowed' }}
+            >
+                {label}
+            </span>
+        );
+    }
+
+    return (
+        <button
+            type="button"
+            className={timedIn ? '' : 'btn-view'}
+            onClick={(e) => { e.stopPropagation(); onStart(act, timedIn ? 'checkout' : 'checkin'); }}
+            style={{ ...base, background: timedIn ? 'white' : '#CC0000', color: timedIn ? '#CC0000' : 'white' }}
+        >
+            {label}
+        </button>
+    );
+}
+
+/* ---------------- Icons ---------------- */
+
+const iconProps = { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
+
 function ClockIcon() {
-    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+    return <svg {...iconProps}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 }
-function DocIcon() {
-    return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
+function CalendarIcon() {
+    return <svg {...iconProps}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+}
+function PinIcon() {
+    return <svg {...iconProps}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>;
+}
+function ClipboardIcon() {
+    return <svg {...iconProps}><path d="M9 2h6v4H9z"/><rect x="4" y="4" width="16" height="18" rx="2"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>;
+}
+function UserIcon() {
+    return <svg {...iconProps}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+}
+function TextIcon() {
+    return <svg {...iconProps}><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>;
 }

@@ -1,471 +1,259 @@
-import { Head, Link, useForm } from '@inertiajs/react';
-import { useState } from 'react';
+import { useForm } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
+import VolunteerShell, { safeRoute, useVolunteerShell, faceStatusLabel } from '../../Components/VolunteerShell';
 
-export default function Profile({ auth, user }) {
-    const [photoPreview, setPhotoPreview] = useState(null);
+/*
+  Props from the controller (`profile` is the volunteer's record):
+    profile = {
+      volunteer_id, status, date_joined,
+      contact_number, address, birthdate (YYYY-MM-DD), gender,
+      emergency_contact_name, emergency_contact_relationship, emergency_contact_number,
+      photo_url
+    }
+*/
 
-    const profileForm = useForm({
-        phone: user.phone || '',
-        address: user.address || '',
-        birthdate: user.birthdate || '',
-        gender: user.gender || '',
-        emergency_contact_name: user.emergency_contact_name || '',
-        emergency_contact_phone: user.emergency_contact_phone || '',
+const PH_MOBILE = /^(09|\+639)\d{9}$/;
+const isPhone = (v = '') => PH_MOBILE.test(v.replace(/[\s-]/g, ''));
+
+function validate(d) {
+    const e = {};
+    if (!isPhone(d.contact_number)) e.contact_number = 'Enter a Philippine mobile number, like 0917 123 4567.';
+    if ((d.address || '').trim().length < 10) e.address = 'Enter your complete address, including barangay and city.';
+    if (!d.birthdate) e.birthdate = 'Select your birthdate.';
+    else if (new Date(d.birthdate) > new Date()) e.birthdate = 'Birthdate cannot be in the future.';
+    if (!d.gender) e.gender = 'Select an option.';
+    if ((d.emergency_contact_name || '').trim().length < 2) e.emergency_contact_name = 'Enter the full name of your emergency contact.';
+    if (!(d.emergency_contact_relationship || '').trim()) e.emergency_contact_relationship = 'Enter how this person is related to you.';
+    if (!isPhone(d.emergency_contact_number)) e.emergency_contact_number = 'Enter a Philippine mobile number, like 0917 123 4567.';
+    return e;
+}
+
+export default function VolunteerProfile({ auth, profile }) {
+    return (
+        <VolunteerShell active="profile" title="Profile">
+            <ProfileBody user={auth.user} profile={profile || {}} />
+        </VolunteerShell>
+    );
+}
+
+function ProfileBody({ user, profile }) {
+    const { setup, openFace, showToast } = useVolunteerShell();
+    const { data, setData, post, transform, processing, errors, clearErrors } = useForm({
+        contact_number: profile.contact_number || '',
+        address: profile.address || '',
+        birthdate: profile.birthdate || '',
+        gender: profile.gender || '',
+        emergency_contact_name: profile.emergency_contact_name || '',
+        emergency_contact_relationship: profile.emergency_contact_relationship || '',
+        emergency_contact_number: profile.emergency_contact_number || '',
         photo: null,
     });
+    const [clientErrors, setClientErrors] = useState({});
+    const [photoPreview, setPhotoPreview] = useState(profile.photo_url || null);
+    const [photoError, setPhotoError] = useState('');
 
-    const passwordForm = useForm({
-        current_password: '',
-        password: '',
-        password_confirmation: '',
-    });
+    useEffect(() => () => {
+        if (photoPreview && photoPreview.startsWith('blob:')) URL.revokeObjectURL(photoPreview);
+    }, [photoPreview]);
 
-    const submitProfile = (e) => {
+    const err = (k) => clientErrors[k] || errors[k];
+
+    const change = (k) => (e) => {
+        setData(k, e.target.value);
+        if (clientErrors[k]) setClientErrors((c) => ({ ...c, [k]: undefined }));
+        if (errors[k]) clearErrors(k);
+    };
+
+    const pickPhoto = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/') || file.size > 2 * 1024 * 1024) {
+            setPhotoError('Choose an image (JPG or PNG) under 2 MB.');
+            return;
+        }
+        setPhotoError('');
+        setData('photo', file);
+        setPhotoPreview(URL.createObjectURL(file));
+    };
+
+    const submit = (e) => {
         e.preventDefault();
-        profileForm.post(route('volunteer.profile.update'), {
+        const found = validate(data);
+        setClientErrors(found);
+        const first = Object.keys(found)[0];
+        if (first) {
+            document.getElementById(`f-${first}`)?.focus();
+            return;
+        }
+        const wasFirstTime = !setup.profile_completed;
+        // Laravel route is PATCH, so _method must be 'patch' (not 'put') or it 405s.
+        transform((d) => ({ ...d, _method: 'patch' }));
+        post(safeRoute('volunteer.profile.update'), {
             forceFormData: true,
             preserveScroll: true,
-            onSuccess: () => {
-                profileForm.setData('photo', null);
-                setPhotoPreview(null);
-            },
+            onSuccess: () => showToast(wasFirstTime ? 'Profile setup completed. Thank you!' : 'Your changes were saved.'),
         });
     };
 
-    const submitPassword = (e) => {
-        e.preventDefault();
-        passwordForm.patch(route('volunteer.profile.password'), {
-            preserveScroll: true,
-            onSuccess: () => passwordForm.reset(),
-        });
-    };
+    const input = (k, extra = {}) => ({
+        id: `f-${k}`,
+        className: 'vp-input',
+        value: data[k],
+        onChange: change(k),
+        'aria-invalid': err(k) ? 'true' : undefined,
+        'aria-describedby': err(k) ? `f-${k}-err` : undefined,
+        style: { ...inputStyle, ...(err(k) ? { borderColor: '#b3261e', background: '#fff8f7' } : {}) },
+        ...extra,
+    });
 
-    const handlePhotoChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            profileForm.setData('photo', file);
-            setPhotoPreview(URL.createObjectURL(file));
-        }
-    };
-
-    const initials = (user.name || '')
-        .split(' ')
-        .map(n => n[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
+    const today = new Date().toISOString().slice(0, 10);
+    const joined = profile.date_joined || (user.created_at ? new Date(user.created_at).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '—');
 
     return (
         <>
-            <Head title="My Profile - Philippine Red Cross Muntinlupa" />
-            <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Source+Sans+3:ital,wght@0,300;0,400;0,600;1,300&display=swap" rel="stylesheet" />
+            <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '18px', fontWeight: '600', color: '#111', marginBottom: '4px' }}>Volunteer Profile</div>
+                <div style={{ fontSize: '11px', color: '#aaa' }}>
+                    {setup.profile_completed ? 'Keep your details up to date.' : 'Profile setup is required. Complete every field below to continue using the portal.'}
+                </div>
+            </div>
 
-            <style>{`
-                *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+            {!setup.profile_completed && (
+                <div role="region" aria-label="Profile setup required" style={{ background: '#fff5f5', border: '1px solid #f5c6c6', borderLeft: '4px solid #CC0000', borderRadius: '10px', padding: '13px 18px', marginBottom: '16px', fontSize: '11.5px', color: '#555' }}>
+                    <strong style={{ color: '#111', fontWeight: '600' }}>Profile setup required.</strong> Save this form to finish your account setup.
+                </div>
+            )}
 
-                body {
-                    font-family: 'Source Sans 3', sans-serif;
-                    background: linear-gradient(135deg, #fff5f5 0%, #fee2e2 100%);
-                    background-attachment: fixed;
-                }
-
-                .nav-item { position: relative; height: 100%; display: flex; align-items: center; }
-                .nav-link {
-                    font-family: 'Source Sans 3', sans-serif;
-                    font-size: 14px; font-weight: 600;
-                    color: white;
-                    text-decoration: none;
-                    padding: 0 20px; height: 100%;
-                    display: flex; align-items: center; gap: 9px;
-                    white-space: nowrap;
-                    letter-spacing: 0.3px;
-                    transition: background 0.2s;
-                    cursor: pointer;
-                }
-                .nav-link:hover { background: rgba(0,0,0,0.12); }
-
-                .dropdown {
-                    position: absolute; top: 120%; right: 0;
-                    background: #DC2626;
-                    min-width: 180px;
-                    padding: 6px 0;
-                    opacity: 0; visibility: hidden;
-                    transform: translateY(-6px);
-                    transition: all 0.2s ease;
-                    z-index: 200;
-                    box-shadow: 0 16px 36px rgba(0,0,0,0.28);
-                    border-radius: 16px;
-                }
-                .nav-item:hover .dropdown { opacity: 1; visibility: visible; transform: translateY(0); }
-
-                .dropdown a, .dropdown button {
-                    display: block; width: 100%; text-align: left;
-                    font-family: 'Source Sans 3', sans-serif;
-                    font-size: 13px; font-weight: 400;
-                    color: rgba(255,255,255,0.88);
-                    text-decoration: none; background: none; border: none; cursor: pointer;
-                    padding: 12px 24px;
-                    border-bottom: 1px solid rgba(255,255,255,0.08);
-                    transition: background 0.15s, color 0.15s;
-                    letter-spacing: 0.2px;
-                }
-                .dropdown a:last-child, .dropdown button:last-child { border-bottom: none; }
-                .dropdown a:hover, .dropdown button:hover { background: rgba(0,0,0,0.15); color: white; }
-
-                .section-box {
-                    background: white;
-                    border-radius: 24px;
-                    padding: 40px;
-                    max-width: 780px;
-                    margin: 0 auto;
-                    box-shadow: 0 4px 24px rgba(0,0,0,0.05);
-                    border: 1px solid #f5f5f5;
-                }
-
-                .form-field label {
-                    display: block;
-                    font-family: 'Source Sans 3', sans-serif;
-                    font-size: 12px; font-weight: 600;
-                    letter-spacing: 0.5px; text-transform: uppercase;
-                    color: #999; margin-bottom: 8px;
-                }
-                .form-field input, .form-field select, .form-field textarea {
-                    width: 100%;
-                    font-family: 'Source Sans 3', sans-serif;
-                    font-size: 14px;
-                    color: #111;
-                    background: #fff8f8;
-                    border: 1px solid #ffe2e2;
-                    border-radius: 10px;
-                    padding: 12px 14px;
-                    outline: none;
-                    transition: border-color 0.2s, box-shadow 0.2s;
-                }
-                .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
-                    border-color: #DC2626;
-                    box-shadow: 0 0 0 3px rgba(220,38,38,0.1);
-                }
-                .form-field .error {
-                    color: #DC2626; font-size: 12px; margin-top: 6px; font-weight: 400;
-                }
-
-                .save-btn {
-                    font-family: 'Source Sans 3', sans-serif;
-                    font-size: 13px; font-weight: 700;
-                    background: #DC2626; color: white;
-                    padding: 12px 32px; border-radius: 100px;
-                    border: none; letter-spacing: 0.4px;
-                    cursor: pointer;
-                    transition: background 0.2s;
-                }
-                .save-btn:hover { background: #b91c1c; }
-                .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-                .role-badge {
-                    display: inline-flex; align-items: center; gap: 6px;
-                    background: #fee2e2; color: #DC2626;
-                    font-size: 11px; font-weight: 700;
-                    letter-spacing: 0.6px; text-transform: uppercase;
-                    padding: 6px 14px; border-radius: 100px;
-                }
-
-                .photo-upload-btn {
-                    font-family: 'Source Sans 3', sans-serif;
-                    font-size: 12px; font-weight: 600;
-                    background: white; color: #DC2626;
-                    border: 1px solid #ffe2e2;
-                    padding: 8px 18px; border-radius: 100px;
-                    cursor: pointer; letter-spacing: 0.3px;
-                    transition: background 0.2s, border-color 0.2s;
-                    display: inline-flex; align-items: center; gap: 6px;
-                }
-                .photo-upload-btn:hover { background: #fff3f3; border-color: #DC2626; }
-            `}</style>
-
-            <div>
-
-                {/* ── NAVBAR ── */}
-                <nav style={{
-                    position: 'fixed', top: '16px', left: '24px', right: '24px', zIndex: 100,
-                    background: '#DC2626',
-                    height: '64px',
-                    borderRadius: '100px',
-                    display: 'flex', alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0 12px 0 24px',
-                    boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
-                }}>
-                    <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '14px', textDecoration: 'none', flexShrink: 0 }}>
-                        <div style={{
-                            width: '36px', height: '36px', background: 'white',
-                            borderRadius: '50%', display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', color: '#DC2626', fontSize: '20px', fontWeight: '900',
-                            flexShrink: 0,
-                        }}>+</div>
-                        <div>
-                            <strong style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: 'white', fontFamily: 'Oswald, sans-serif', letterSpacing: '0.6px' }}>
-                                RIZAL CHAPTER
-                            </strong>
-                            <span style={{ display: 'block', fontSize: '10.5px', color: 'rgba(255,255,255,0.72)', fontFamily: 'Source Sans 3, sans-serif', fontWeight: '300' }}>
-                                Muntinlupa City Branch
-                            </span>
-                        </div>
-                    </Link>
-
-                    <ul style={{ display: 'flex', alignItems: 'center', listStyle: 'none', height: '64px', gap: '0', margin: '0 0 0 auto', padding: 0 }}>
-                        <li className="nav-item">
-                            <Link href={route('volunteer.dashboard')} className="nav-link">Dashboard</Link>
-                        </li>
-                        <li className="nav-item">
-                            <Link href={route('volunteer.schedule')} className="nav-link">Schedule</Link>
-                        </li>
-                        <li className="nav-item">
-                            <Link href={route('volunteer.attendance')} className="nav-link">Attendance</Link>
-                        </li>
-                        <li className="nav-item" style={{ marginLeft: '4px' }}>
-                            <span className="nav-link" style={{ gap: '10px' }}>
-                                {user.photo ? (
-                                    <img src={`/storage/${user.photo}`} alt={user.name} style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
-                                ) : (
-                                    <div style={{
-                                        width: '28px', height: '28px', borderRadius: '50%',
-                                        background: 'rgba(255,255,255,0.2)', color: 'white',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '11px', fontWeight: '700', fontFamily: 'Oswald, sans-serif',
-                                    }}>{initials}</div>
-                                )}
-                                {user.name}
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="6 9 12 15 18 9" />
-                                </svg>
-                            </span>
-                            <div className="dropdown">
-                                <Link href={route('volunteer.profile')}>My Profile</Link>
-                                <Link href={route('logout')} method="post" as="button">Log Out</Link>
-                            </div>
-                        </li>
-                    </ul>
-                </nav>
-
-                {/* ── PROFILE HEADER ── */}
-                <section style={{ padding: '112px 64px 20px' }}>
-                    <div className="section-box" style={{ display: 'flex', alignItems: 'center', gap: '24px', padding: '32px 40px' }}>
-                        {photoPreview || user.photo ? (
-                            <img
-                                src={photoPreview || `/storage/${user.photo}`}
-                                alt={user.name}
-                                style={{ width: '76px', height: '76px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-                            />
-                        ) : (
-                            <div style={{
-                                width: '76px', height: '76px', borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #7f1d1d 0%, #DC2626 100%)',
-                                color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontFamily: 'Oswald, sans-serif', fontSize: '26px', fontWeight: '700',
-                                flexShrink: 0, letterSpacing: '1px',
-                            }}>{initials}</div>
-                        )}
-                        <div>
-                            <h1 style={{ fontFamily: 'Oswald, sans-serif', fontSize: '24px', color: '#111', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '6px' }}>
-                                {user.name}
-                            </h1>
-                            <div style={{ fontFamily: 'Source Sans 3, sans-serif', fontSize: '13.5px', color: '#999', fontWeight: '300', marginBottom: '10px' }}>
-                                {user.email}
-                            </div>
-                            <span className="role-badge">Volunteer</span>
-                        </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: '12px', alignItems: 'start' }}>
+                <form onSubmit={submit} noValidate style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+                    <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Your details</span>
                     </div>
-                </section>
 
-                {/* ── EDIT PROFILE FORM ── */}
-                <section style={{ padding: '20px 64px' }}>
-                    <div className="section-box">
-                        <div style={{ marginBottom: '28px' }}>
-                            <div style={{ fontFamily: 'Source Sans 3, sans-serif', fontSize: '11px', fontWeight: '600', letterSpacing: '3px', textTransform: 'uppercase', color: '#DC2626', marginBottom: '8px' }}>
-                                Personal Information
-                            </div>
-                            <h2 style={{ fontFamily: 'Oswald, sans-serif', fontSize: '24px', color: '#111', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                Edit Profile
-                            </h2>
+                    <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px' }}>
+                        <Field id="f-name" label="Full name">
+                            <input id="f-name" value={user.name || ''} readOnly style={readOnlyStyle} />
+                        </Field>
+                        <Field id="f-email" label="Email address">
+                            <input id="f-email" value={user.email || ''} readOnly style={readOnlyStyle} />
+                        </Field>
+
+                        <Field id="f-contact_number" label="Contact number" error={err('contact_number')}>
+                            <input {...input('contact_number', { type: 'tel', inputMode: 'tel', placeholder: '0917 123 4567', autoComplete: 'tel' })} />
+                        </Field>
+                        <Field id="f-birthdate" label="Birthdate" error={err('birthdate')}>
+                            <input {...input('birthdate', { type: 'date', max: today })} />
+                        </Field>
+
+                        <div style={{ gridColumn: 'span 2' }}>
+                            <Field id="f-address" label="Address" error={err('address')} hint="House no., street, barangay, city or municipality.">
+                                <input {...input('address', { autoComplete: 'street-address' })} />
+                            </Field>
                         </div>
 
-                        <form onSubmit={submitProfile} encType="multipart/form-data" style={{ display: 'grid', gap: '20px' }}>
-                            <div className="form-field">
-                                <label>Profile Photo</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                    <label className="photo-upload-btn">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                        Upload New Photo
-                                        <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: 'none' }} />
-                                    </label>
-                                    {profileForm.data.photo && (
-                                        <span style={{ fontSize: '12px', color: '#999', fontFamily: 'Source Sans 3, sans-serif' }}>{profileForm.data.photo.name}</span>
-                                    )}
-                                </div>
-                                {profileForm.errors.photo && <div className="error">{profileForm.errors.photo}</div>}
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                                <div className="form-field">
-                                    <label htmlFor="phone">Contact Number</label>
-                                    <input
-                                        id="phone"
-                                        type="text"
-                                        placeholder="+63 9XX-XXX-XXXX"
-                                        value={profileForm.data.phone}
-                                        onChange={e => profileForm.setData('phone', e.target.value)}
-                                    />
-                                    {profileForm.errors.phone && <div className="error">{profileForm.errors.phone}</div>}
-                                </div>
-
-                                <div className="form-field">
-                                    <label htmlFor="birthdate">Birthdate</label>
-                                    <input
-                                        id="birthdate"
-                                        type="date"
-                                        value={profileForm.data.birthdate}
-                                        onChange={e => profileForm.setData('birthdate', e.target.value)}
-                                    />
-                                    {profileForm.errors.birthdate && <div className="error">{profileForm.errors.birthdate}</div>}
-                                </div>
-                            </div>
-
-                            <div className="form-field">
-                                <label htmlFor="gender">Gender</label>
-                                <select
-                                    id="gender"
-                                    value={profileForm.data.gender}
-                                    onChange={e => profileForm.setData('gender', e.target.value)}
-                                >
-                                    <option value="">Select gender</option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                                {profileForm.errors.gender && <div className="error">{profileForm.errors.gender}</div>}
-                            </div>
-
-                            <div className="form-field">
-                                <label htmlFor="address">Address</label>
-                                <textarea
-                                    id="address"
-                                    rows={3}
-                                    placeholder="House/Unit No., Street, Barangay, Muntinlupa City"
-                                    value={profileForm.data.address}
-                                    onChange={e => profileForm.setData('address', e.target.value)}
-                                    style={{ resize: 'vertical', fontFamily: 'inherit' }}
-                                />
-                                {profileForm.errors.address && <div className="error">{profileForm.errors.address}</div>}
-                            </div>
-
-                            <div style={{ borderTop: '1px solid #f5f5f5', paddingTop: '20px', marginTop: '4px' }}>
-                                <div style={{ fontFamily: 'Source Sans 3, sans-serif', fontSize: '11px', fontWeight: '600', letterSpacing: '2px', textTransform: 'uppercase', color: '#DC2626', marginBottom: '16px' }}>
-                                    Emergency Contact
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                                    <div className="form-field">
-                                        <label htmlFor="emergency_contact_name">Contact Name</label>
-                                        <input
-                                            id="emergency_contact_name"
-                                            type="text"
-                                            placeholder="Full name"
-                                            value={profileForm.data.emergency_contact_name}
-                                            onChange={e => profileForm.setData('emergency_contact_name', e.target.value)}
-                                        />
-                                        {profileForm.errors.emergency_contact_name && <div className="error">{profileForm.errors.emergency_contact_name}</div>}
-                                    </div>
-                                    <div className="form-field">
-                                        <label htmlFor="emergency_contact_phone">Contact Number</label>
-                                        <input
-                                            id="emergency_contact_phone"
-                                            type="text"
-                                            placeholder="+63 9XX-XXX-XXXX"
-                                            value={profileForm.data.emergency_contact_phone}
-                                            onChange={e => profileForm.setData('emergency_contact_phone', e.target.value)}
-                                        />
-                                        {profileForm.errors.emergency_contact_phone && <div className="error">{profileForm.errors.emergency_contact_phone}</div>}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '4px' }}>
-                                <button type="submit" className="save-btn" disabled={profileForm.processing}>
-                                    Save Changes
-                                </button>
-                                {profileForm.recentlySuccessful && (
-                                    <span style={{ fontFamily: 'Source Sans 3, sans-serif', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>
-                                        Saved.
-                                    </span>
-                                )}
-                            </div>
-                        </form>
+                        <Field id="f-gender" label="Gender" error={err('gender')}>
+                            <select {...input('gender')}>
+                                <option value="">Select</option>
+                                <option>Female</option>
+                                <option>Male</option>
+                                <option>Prefer not to say</option>
+                            </select>
+                        </Field>
                     </div>
-                </section>
 
-                {/* ── CHANGE PASSWORD ── */}
-                <section style={{ padding: '20px 64px 60px' }}>
-                    <div className="section-box">
-                        <div style={{ marginBottom: '28px' }}>
-                            <div style={{ fontFamily: 'Source Sans 3, sans-serif', fontSize: '11px', fontWeight: '600', letterSpacing: '3px', textTransform: 'uppercase', color: '#DC2626', marginBottom: '8px' }}>
-                                Security
-                            </div>
-                            <h2 style={{ fontFamily: 'Oswald, sans-serif', fontSize: '24px', color: '#111', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                Change Password
-                            </h2>
-                        </div>
-
-                        <form onSubmit={submitPassword} style={{ display: 'grid', gap: '20px' }}>
-                            <div className="form-field">
-                                <label htmlFor="current_password">Current Password</label>
-                                <input
-                                    id="current_password"
-                                    type="password"
-                                    value={passwordForm.data.current_password}
-                                    onChange={e => passwordForm.setData('current_password', e.target.value)}
-                                    autoComplete="current-password"
-                                />
-                                {passwordForm.errors.current_password && <div className="error">{passwordForm.errors.current_password}</div>}
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                                <div className="form-field">
-                                    <label htmlFor="password">New Password</label>
-                                    <input
-                                        id="password"
-                                        type="password"
-                                        value={passwordForm.data.password}
-                                        onChange={e => passwordForm.setData('password', e.target.value)}
-                                        autoComplete="new-password"
-                                    />
-                                    {passwordForm.errors.password && <div className="error">{passwordForm.errors.password}</div>}
-                                </div>
-                                <div className="form-field">
-                                    <label htmlFor="password_confirmation">Confirm New Password</label>
-                                    <input
-                                        id="password_confirmation"
-                                        type="password"
-                                        value={passwordForm.data.password_confirmation}
-                                        onChange={e => passwordForm.setData('password_confirmation', e.target.value)}
-                                        autoComplete="new-password"
-                                    />
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '4px' }}>
-                                <button type="submit" className="save-btn" disabled={passwordForm.processing}>
-                                    Update Password
-                                </button>
-                                {passwordForm.recentlySuccessful && (
-                                    <span style={{ fontFamily: 'Source Sans 3, sans-serif', fontSize: '13px', color: '#16a34a', fontWeight: '600' }}>
-                                        Password updated.
-                                    </span>
-                                )}
-                            </div>
-                        </form>
+                    <div style={{ padding: '14px 18px', borderTop: '1px solid #f5f5f5', borderBottom: '1px solid #f5f5f5', background: '#fcfcfc' }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Emergency contact</span>
                     </div>
-                </section>
 
+                    <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px' }}>
+                        <Field id="f-emergency_contact_name" label="Full name" error={err('emergency_contact_name')}>
+                            <input {...input('emergency_contact_name')} />
+                        </Field>
+                        <Field id="f-emergency_contact_relationship" label="Relationship" error={err('emergency_contact_relationship')}>
+                            <input {...input('emergency_contact_relationship', { placeholder: 'Mother, spouse, sibling…' })} />
+                        </Field>
+                        <Field id="f-emergency_contact_number" label="Contact number" error={err('emergency_contact_number')}>
+                            <input {...input('emergency_contact_number', { type: 'tel', inputMode: 'tel', placeholder: '0917 123 4567' })} />
+                        </Field>
+                    </div>
+
+                    <div style={{ padding: '14px 18px', borderTop: '1px solid #f5f5f5', display: 'flex', justifyContent: 'flex-end' }}>
+                        <button type="submit" disabled={processing} className="btn-view" style={{ background: '#CC0000', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 20px', fontSize: '11.5px', fontWeight: '600', cursor: processing ? 'wait' : 'pointer', opacity: processing ? 0.7 : 1, fontFamily: 'inherit' }}>
+                            {processing ? 'Saving…' : setup.profile_completed ? 'Save changes' : 'Complete profile setup'}
+                        </button>
+                    </div>
+                </form>
+
+                {/* Account column */}
+                <aside aria-label="Account information" style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', padding: '22px 18px', textAlign: 'center' }}>
+                    <div style={{ width: '92px', height: '92px', borderRadius: '50%', margin: '0 auto 12px', background: '#fff0f0', color: '#CC0000', fontSize: '28px', fontWeight: '600', display: 'grid', placeItems: 'center', overflow: 'hidden', border: '3px solid white', boxShadow: '0 0 0 1px #ebebeb' }}>
+                        {photoPreview ? <img src={photoPreview} alt="Your profile photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span aria-hidden="true">{user.name?.charAt(0).toUpperCase()}</span>}
+                    </div>
+                    <label style={{ display: 'inline-block', position: 'relative', fontSize: '10.5px', fontWeight: '600', color: '#CC0000', border: '1px solid #f0c8c8', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer' }}>
+                        {photoPreview ? 'Change photo' : 'Upload photo'}
+                        <input type="file" accept="image/*" onChange={pickPhoto} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+                    </label>
+                    {(photoError || errors.photo) && <p role="alert" style={{ fontSize: '10.5px', color: '#b3261e', fontWeight: '500', marginTop: '8px' }}>{photoError || errors.photo}</p>}
+
+                    <dl style={{ margin: '18px 0 0', textAlign: 'left' }}>
+                        <Row label="Volunteer ID">{profile.volunteer_id || '—'}</Row>
+                        <Row label="Volunteer status">{profile.status || 'Approved'}</Row>
+                        <Row label="Date joined">{joined}</Row>
+                        <Row label="Profile setup">
+                            <Pill ok={setup.profile_completed}>{setup.profile_completed ? 'Completed' : 'Not Yet Completed'}</Pill>
+                        </Row>
+                        <Row label="Face registration">
+                            <Pill ok={setup.face_done}>{setup.face_done ? 'Registered' : faceStatusLabel(setup)}</Pill>
+                            {setup.face_needed && (
+                                <div>
+                                    <button type="button" onClick={openFace} className="btn-view" style={{ marginTop: '8px', fontSize: '10px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '5px', padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Register My Face</button>
+                                </div>
+                            )}
+                        </Row>
+                    </dl>
+                    <p style={{ fontSize: '10px', color: '#aaa', marginTop: '14px', lineHeight: 1.55, textAlign: 'left' }}>
+                        Volunteer ID, status and date joined are managed by the Red Cross and cannot be edited.
+                    </p>
+                </aside>
             </div>
         </>
+    );
+}
+
+/* ---------------- small pieces ---------------- */
+
+const inputStyle = { width: '100%', border: '1px solid #e2e2e2', borderRadius: '8px', padding: '9px 12px', fontSize: '12px', background: 'white', color: '#222', fontFamily: 'inherit', minHeight: '38px' };
+const readOnlyStyle = { ...inputStyle, background: '#f5f5f6', color: '#888', border: '1px solid #ebebeb' };
+
+function Field({ id, label, error, hint, children }) {
+    return (
+        <div>
+            <label htmlFor={id} style={{ display: 'block', fontSize: '11px', fontWeight: '500', color: '#333', marginBottom: '5px' }}>{label}</label>
+            {children}
+            {hint && !error && <p style={{ fontSize: '10px', color: '#aaa', marginTop: '4px' }}>{hint}</p>}
+            {error && <p id={`${id}-err`} style={{ fontSize: '10.5px', color: '#b3261e', fontWeight: '500', marginTop: '4px' }}>{error}</p>}
+        </div>
+    );
+}
+
+function Row({ label, children }) {
+    return (
+        <div style={{ padding: '10px 0', borderTop: '1px solid #f5f5f5' }}>
+            <dt style={{ fontSize: '10px', color: '#aaa', marginBottom: '3px' }}>{label}</dt>
+            <dd style={{ margin: 0, fontSize: '12px', fontWeight: '500', color: '#111' }}>{children}</dd>
+        </div>
+    );
+}
+
+function Pill({ ok, children }) {
+    return (
+        <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            fontSize: '10px', fontWeight: '600', padding: '3px 10px', borderRadius: '10px',
+            background: ok ? '#f0fdf4' : '#fffbeb', color: ok ? '#16a34a' : '#b45309',
+        }}>
+            <span aria-hidden="true">{ok ? '✓' : '●'}</span>
+            {children}
+        </span>
     );
 }

@@ -6,38 +6,22 @@ use App\Http\Controllers\NewsController;
 use App\Http\Controllers\Volunteer\ProfileController as VolunteerProfileController;
 use App\Http\Controllers\Volunteer\AttendanceController;
 use App\Http\Controllers\Volunteer\FaceAttendanceController;
-use App\Http\Controllers\Volunteer\DocumentController;
 use App\Http\Controllers\Volunteer\CommunicationController;
+use App\Http\Controllers\Volunteer\RecordsController;
+use App\Http\Controllers\Volunteer\File201Controller;
+use App\Http\Controllers\Volunteer\NotificationController;
 use App\Http\Controllers\Admin\ProfileController as AdminProfileController;
 use App\Http\Controllers\WebAuthn\WebAuthnRegisterController;
 use App\Http\Controllers\WebAuthn\WebAuthnAttendanceController;
 use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
 use App\Http\Controllers\Admin\CommunicationController as AdminCommunicationController;
+use App\Http\Controllers\Admin\DocumentReviewController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
-});
-
-Route::get('/about', function () {
-    return Inertia::render('About');
-})->name('about');
-
-Route::get('/contact', function () {
-    return Inertia::render('Contact');
-})->name('contact');
-
-Route::get('/volunteer', function () {
-    return Inertia::render('Volunteer');
-})->name('volunteer');
+Route::redirect('/', '/login');
 
 Route::get('/donate', function () {
     return Inertia::render('Donate');
@@ -66,6 +50,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::get('/volunteers', [VolunteerController::class, 'index'])->name('volunteers');
     Route::patch('/volunteers/{id}/approve', [VolunteerController::class, 'approve'])->name('volunteers.approve');
     Route::patch('/volunteers/{id}/reject', [VolunteerController::class, 'reject'])->name('volunteers.reject');
+    Route::post('/volunteers/{id}/request-document', [VolunteerController::class, 'requestDocument'])->name('volunteers.request-document');
 
     // Activities
     Route::get('/activities', [ActivityController::class, 'index'])->name('activities.index');
@@ -89,6 +74,13 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::get('/profile', [AdminProfileController::class, 'edit'])->name('profile');
     Route::patch('/profile', [AdminProfileController::class, 'update'])->name('profile.update');
     Route::patch('/profile/password', [AdminProfileController::class, 'updatePassword'])->name('profile.password');
+
+    // Document Review
+    Route::get('/document-review', [DocumentReviewController::class, 'index'])->name('document-review.index');
+    Route::patch('/document-review/{document}/approve', [DocumentReviewController::class, 'approve'])->name('document-review.approve');
+    Route::patch('/document-review/{document}/reject', [DocumentReviewController::class, 'reject'])->name('document-review.reject');
+    Route::get('/document-review/{document}/view', [DocumentReviewController::class, 'view'])->name('document-review.view');
+    Route::get('/document-review/{document}/download', [DocumentReviewController::class, 'download'])->name('document-review.download');
 });
 
 // Volunteer Routes
@@ -108,15 +100,18 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
             ->orderBy('date', 'asc')
             ->get(['activities.id', 'activities.name', 'activities.date', 'activities.location_name', 'activities.start_time', 'activities.end_time']);
 
-        $recentAttendance = \App\Models\Attendance::where('user_id', $user->id)
-            ->orderBy('date', 'desc')
-            ->limit(5)
-            ->get(['date', 'time_in', 'time_out', 'hours_rendered']);
+        \App\Models\Attendance::markAbsences($user->id);
 
-        $todayRecord = \App\Models\Attendance::where('user_id', $user->id)
+        $recentAttendance = \App\Models\Attendance::where('user_id', $user->id)
+            ->with('activity:id,name,date,location_name,start_time,end_time')
+            ->orderBy('date', 'desc')
+            ->orderBy('updated_at', 'desc')
+            ->limit(5)
+            ->get(['id', 'activity_id', 'date', 'time_in', 'time_out', 'hours_rendered', 'status']);
+
+        $todayAttendance = \App\Models\Attendance::where('user_id', $user->id)
             ->whereDate('date', today())
-            ->with('activity')
-            ->first();
+            ->get(['activity_id', 'time_in', 'time_out', 'hours_rendered', 'status']);
 
         $activities = $user->activities()
             ->where('status', '!=', 'cancelled')
@@ -130,13 +125,14 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
             'monthDays'          => $monthDays,
             'assignedActivities' => $assignedActivities,
             'recentAttendance'   => $recentAttendance,
-            'todayRecord'        => $todayRecord,
+            'todayAttendance'    => $todayAttendance,
             'activities'         => $activities,
         ]);
     })->name('dashboard');
 
     Route::get('/schedule', function () {
         $user = auth()->user();
+
         $activities = $user->activities()
             ->orderBy('date', 'asc')
             ->get([
@@ -151,6 +147,46 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
                 'activities.assigned_by',
             ]);
 
+        // pull this volunteer's own attendance for these activities so the status shown
+        // (assigned/ongoing/completed/missed) reflects THEIR Time In/Out, not just the
+        // activity's admin-set status column. time_out is also kept so completed activities
+        // on the same date can be sorted by most-recently-completed first.
+        \App\Models\Attendance::markAbsences($user->id);
+
+        $attendanceByActivity = \App\Models\Attendance::where('user_id', $user->id)
+            ->whereIn('activity_id', $activities->pluck('id'))
+            ->get(['activity_id', 'time_in', 'time_out', 'status'])
+            ->keyBy('activity_id');
+
+        $activities = $activities->map(function ($act) use ($attendanceByActivity) {
+            $rec = $attendanceByActivity->get($act->id);
+
+            // compares dates only (startOfDay), so today's own activities are never
+            // marked missed ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â just ones whose date has fully passed with no attendance
+            $isPastDate = \Carbon\Carbon::parse($act->date)->startOfDay()->lt(today());
+
+            if ($act->status === 'cancelled') {
+                // stays cancelled
+            } elseif ($rec && $rec->status === 'absent') {
+                $act->status = 'missed';
+            } elseif ($rec && $rec->time_out) {
+                $act->status = 'completed';
+            } elseif ($rec && $rec->time_in) {
+                $act->status = 'ongoing';
+            } elseif ($isPastDate && !$rec) {
+                // date has passed and the volunteer never timed in ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â distinct from "assigned"
+                $act->status = 'missed';
+            } else {
+                $act->status = 'assigned';
+            }
+
+            // expose the raw time_out so the frontend can break ties between
+            // same-date completed activities (most recently completed goes first)
+            $act->time_out = $rec?->time_out;
+
+            return $act;
+        });
+
         return Inertia::render('Volunteer/Schedule', [
             'auth'       => ['user' => $user],
             'activities' => $activities,
@@ -160,11 +196,13 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
     // Communication
     Route::get('/communication', [CommunicationController::class, 'index'])->name('communication');
     Route::post('/communication/send', [CommunicationController::class, 'send'])->name('communication.send');
-
-    // Documents
-    Route::get('/documents', [DocumentController::class, 'index'])->name('documents');
-    Route::post('/documents', [DocumentController::class, 'store'])->name('documents.store');
-    Route::delete('/documents/{id}', [DocumentController::class, 'destroy'])->name('documents.destroy');
+    Route::post('/communication/{email}/reply', [CommunicationController::class, 'reply'])->name('communication.reply');
+    Route::post('/communication/read', [CommunicationController::class, 'markRead'])->name('communication.read');
+    Route::post('/communication/{email}/star', [CommunicationController::class, 'toggleStar'])->name('communication.star');
+    Route::post('/communication/archive', [CommunicationController::class, 'archive'])->name('communication.archive');
+    Route::post('/communication/trash', [CommunicationController::class, 'trash'])->name('communication.trash');
+    Route::post('/communication/restore', [CommunicationController::class, 'restore'])->name('communication.restore');
+    Route::post('/communication/purge', [CommunicationController::class, 'purge'])->name('communication.purge');
 
     Route::get('/profile', [VolunteerProfileController::class, 'edit'])->name('profile');
     Route::patch('/profile', [VolunteerProfileController::class, 'update'])->name('profile.update');
@@ -173,6 +211,39 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance');
     Route::post('/attendance/time-in', [AttendanceController::class, 'timeIn'])->name('attendance.timein');
     Route::post('/attendance/time-out', [AttendanceController::class, 'timeOut'])->name('attendance.timeout');
+
+    // Records
+    Route::get('/records', [RecordsController::class, 'index'])->name('records');
+
+    // 201 File ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â compliance uploads, approved files, folders, and requests all live here.
+    // view/download routes stream the file through an ownership check ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â no raw storage URL is ever exposed.
+    Route::get('/file201', [File201Controller::class, 'index'])->name('file201');
+    Route::post('/file201/uploads', [File201Controller::class, 'storeUpload'])->name('file201.uploads.store');
+    Route::delete('/file201/uploads/{id}', [File201Controller::class, 'destroyUpload'])->name('file201.uploads.destroy');
+    Route::get('/file201/uploads/{document}/view', [File201Controller::class, 'viewUpload'])->name('file201.uploads.view');
+    Route::get('/file201/uploads/{document}/download', [File201Controller::class, 'downloadUpload'])->name('file201.uploads.download');
+    Route::get('/file201/documents/{document}/view', [File201Controller::class, 'viewApproved'])->name('file201.approved.view');
+    Route::get('/file201/documents/{document}/download', [File201Controller::class, 'downloadApproved'])->name('file201.approved.download');
+    Route::post('/file201/folders', [File201Controller::class, 'storeFolder'])->name('file201.folders.store');
+    Route::delete('/file201/folders/{folder}', [File201Controller::class, 'destroyFolder'])->name('file201.folders.destroy');
+    Route::post('/file201/archive', [File201Controller::class, 'archiveDocuments'])->name('file201.archive');
+    Route::patch('/file201/documents/{document}/move', [File201Controller::class, 'moveDocument'])->name('file201.documents.move');
+    Route::post('/file201/documents/{document}/copy', [File201Controller::class, 'copyDocument'])->name('file201.documents.copy');
+    Route::delete('/file201/documents/{document}', [File201Controller::class, 'destroyCopy'])->name('file201.documents.destroy');
+    Route::post('/file201/trash/{id}/restore', [File201Controller::class, 'restoreCopy'])->name('file201.trash.restore');
+    Route::delete('/file201/trash/{id}', [File201Controller::class, 'forceDeleteCopy'])->name('file201.trash.destroy');
+    Route::delete('/file201/trash', [File201Controller::class, 'emptyTrash'])->name('file201.trash.empty');
+    Route::post('/file201/folders/{folder}/copy', [File201Controller::class, 'copyFolder'])->name('file201.folders.copy');
+    Route::patch('/file201/documents/{document}/star', [File201Controller::class, 'toggleStarDocument'])->name('file201.documents.star');
+    Route::patch('/file201/folders/{folder}/star', [File201Controller::class, 'toggleStarFolder'])->name('file201.folders.star');
+    Route::patch('/file201/documents/{document}/rename', [File201Controller::class, 'renameDocument'])->name('file201.documents.rename');
+    Route::patch('/file201/folders/{folder}/rename', [File201Controller::class, 'renameFolder'])->name('file201.folders.rename');
+    Route::patch('/file201/folders/{folder}/move', [File201Controller::class, 'moveFolder'])->name('file201.folders.move');
+
+    // Notifications
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications');
+    Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
+    Route::patch('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
 
     // Face Recognition Attendance
     Route::post('/face/register', [FaceAttendanceController::class, 'registerFace'])->name('face.register');

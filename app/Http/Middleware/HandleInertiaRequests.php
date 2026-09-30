@@ -38,6 +38,9 @@ class HandleInertiaRequests extends Middleware
                 'success' => session('success'),
                 'error' => session('error'),
             ],
+            'volunteerSetup' => fn () => [
+                'profile_completed' => $request->user()?->isProfileComplete() ?? false,
+            ],
         ];
     }
 }

@@ -82,11 +82,100 @@ function RunningTimer({ record, activity }) {
     );
 }
 
-export default function FaceAttendance({ todayRecord, activities, faceStatus = 'none' }) {
-    const [showRegistration, setShowRegistration] = useState(false);
+// NEW: popup shown right after a Time In / Time Out is saved.
+function ScanSuccessModal({ mode, activityName, onClose }) {
+    const isCheckin = mode === 'checkin';
+
+    return (
+        <div
+            role="presentation"
+            onClick={onClose}
+            style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+                display: 'grid', placeItems: 'center', padding: '16px', zIndex: 3000,
+                fontFamily: "'Inter', sans-serif",
+            }}
+        >
+            <div
+                role="dialog"
+                aria-modal="true"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    background: 'white', borderRadius: '16px', width: '100%', maxWidth: '320px',
+                    overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center',
+                    padding: '28px 24px 24px',
+                }}
+            >
+                <div style={{
+                    width: '52px', height: '52px', borderRadius: '50%', margin: '0 auto 14px',
+                    background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                </div>
+
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#111', marginBottom: '6px' }}>
+                    {isCheckin ? 'Time In Successful' : 'Time Out Successful'}
+                </div>
+
+                <div style={{ fontSize: '12.5px', color: '#666', lineHeight: '1.6', marginBottom: '18px' }}>
+                    {isCheckin
+                        ? <>You're now <strong style={{ color: '#b45309' }}>Ongoing</strong> for <strong>{activityName}</strong>.</>
+                        : <>Your hours for <strong>{activityName}</strong> have been recorded.</>
+                    }
+                </div>
+
+                <button
+                    type="button"
+                    onClick={onClose}
+                    style={{
+                        width: '100%', padding: '11px', borderRadius: '10px', border: 'none',
+                        background: '#CC0000', color: 'white', fontSize: '13px', fontWeight: '600',
+                        cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                >
+                    Got it
+                </button>
+            </div>
+        </div>
+    );
+}
+
+export default function FaceAttendance({ todayRecord, activities, availableActivities, faceStatus = 'none' }) {
+    // CHANGED: open the registration right away when the volunteer arrives from the
+    // "Register My Face" button (…/attendance?register=1) and still needs to register.
+    const [showRegistration, setShowRegistration] = useState(() => {
+        if (typeof window === 'undefined') return false;
+        const wantsRegister = new URLSearchParams(window.location.search).get('register') === '1';
+        return wantsRegister && (faceStatus === 'none' || faceStatus === 'rejected');
+    });
     const [showCapture, setShowCapture] = useState(false);
     const [status, setStatus] = useState(faceStatus);
     const [selectedActivityId, setSelectedActivityId] = useState('');
+
+    // NEW: success popup state. captureInfo remembers which mode/activity was being
+    // scanned, because the props change as soon as the server saves the record.
+    const [successInfo, setSuccessInfo] = useState(null);
+    const captureInfo = useRef(null);
+
+    // NEW: the dropdown only lists activities that still need a Time In.
+    // Falls back to `activities` if the page does not send the shorter list.
+    const timeInOptions = availableActivities ?? activities;
+
+    // NEW: clear the selection once its activity is timed in (it leaves the list).
+    useEffect(() => {
+        if (selectedActivityId && !timeInOptions?.some(a => a.id === Number(selectedActivityId))) {
+            setSelectedActivityId('');
+        }
+    }, [timeInOptions, selectedActivityId]);
+
+    // CHANGED: remove ?register=1 from the address bar so a refresh does not reopen the camera.
+    useEffect(() => {
+        if (new URLSearchParams(window.location.search).has('register')) {
+            window.history.replaceState(window.history.state, '', window.location.pathname);
+        }
+    }, []);
 
     if (status === 'none') {
         return (
@@ -165,9 +254,9 @@ export default function FaceAttendance({ todayRecord, activities, faceStatus = '
     const checkoutActivity = activities?.find(a => a.id === todayRecord?.activity_id) ?? activities?.[0];
     const activeActivity = isOngoing
         ? checkoutActivity
-        : activities?.find(a => a.id === Number(selectedActivityId));
+        : timeInOptions?.find(a => a.id === Number(selectedActivityId));
 
-    const canProceed = isOngoing ? !!checkoutActivity : !!selectedActivityId;
+    const canProceed = isOngoing ? !!checkoutActivity : !!activeActivity;
 
     return (
         <>
@@ -189,15 +278,15 @@ export default function FaceAttendance({ todayRecord, activities, faceStatus = '
                             }}
                         >
                             <option value="">— Choose an activity —</option>
-                            {activities?.map(a => (
+                            {timeInOptions?.map(a => (
                                 <option key={a.id} value={a.id}>
                                     {a.name}{a.start_time ? ` (${a.start_time.slice(0, 5)})` : ''}
                                 </option>
                             ))}
                         </select>
-                        {(!activities || activities.length === 0) && (
+                        {(!timeInOptions || timeInOptions.length === 0) && (
                             <div style={{ fontSize: '11.5px', color: '#bbb', marginTop: '6px' }}>
-                                No activities assigned to you today.
+                                No activities left to time in for today.
                             </div>
                         )}
                     </div>
@@ -207,7 +296,11 @@ export default function FaceAttendance({ todayRecord, activities, faceStatus = '
                     {isOngoing ? 'Ready to time out.' : `Ready to ${mode === 'checkin' ? 'time in' : 'time out'}.`}
                 </div>
                 <button
-                    onClick={() => setShowCapture(true)}
+                    onClick={() => {
+                        // remember what is being scanned, for the success popup
+                        captureInfo.current = { mode, activityName: activeActivity?.name || 'the activity' };
+                        setShowCapture(true);
+                    }}
                     disabled={!canProceed}
                     style={{
                         background: canProceed ? '#DC2626' : '#f0a8a8', color: 'white', border: 'none',
@@ -224,7 +317,19 @@ export default function FaceAttendance({ todayRecord, activities, faceStatus = '
                     mode={mode}
                     activityId={activeActivity?.id}
                     onClose={() => setShowCapture(false)}
-                    onSuccess={() => { setShowCapture(false); router.reload(); }}
+                    onSuccess={() => {
+                        setShowCapture(false);
+                        setSuccessInfo(captureInfo.current || { mode, activityName: activeActivity?.name || 'the activity' });
+                        router.reload();
+                    }}
+                />
+            )}
+
+            {successInfo && (
+                <ScanSuccessModal
+                    mode={successInfo.mode}
+                    activityName={successInfo.activityName}
+                    onClose={() => setSuccessInfo(null)}
                 />
             )}
         </>
@@ -235,7 +340,9 @@ function dist(a, b) {
     return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
+// CHANGED: exported so other pages (e.g. the volunteer dashboard) can open this
+// capture overlay directly, without going through the full FaceAttendance flow.
+export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
     const videoRef = useRef(null);
     const streamRef = useRef(null);
     const holdCounter = useRef(0);
@@ -324,6 +431,10 @@ function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                             longitude: pos.coords.longitude,
                             activity_id: activityId ?? null,
                         }, {
+                            // CHANGED: without these, Inertia rebuilds the whole page when the server
+                            // answers and wipes local state, which made the success popup disappear.
+                            preserveState: true,
+                            preserveScroll: true,
                             onSuccess: () => onSuccess(),
                             onError: (errors) => {
                                 console.error('Time in/out errors:', errors);
@@ -335,8 +446,11 @@ function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                             },
                         });
                     },
-                    () => {
-                        setError('Location access is required to time in/out.');
+                    (geoErr) => {
+                        // CHANGED: say what to do, depending on why location failed.
+                        setError(geoErr?.code === 1
+                            ? 'Location access is blocked. Allow location for this site in your browser settings, then try again.'
+                            : 'Could not get your location. Turn on location or GPS, then try again.');
                         setSubmitting(false);
                         holdCounter.current = 0;
                         setRingProgress(0);
@@ -348,7 +462,8 @@ function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
         return () => { cancelled = true; clearInterval(interval); };
     }, [modelsReady, submitting, mode, activityId, onSuccess]);
 
-    const dashOffset = OVAL_CIRCUMFERENCE * (1 - ringProgress);
+    const cx = OVAL_RX + 12;
+    const cy = OVAL_RY + 12;
 
     return (
         <div style={{
@@ -399,14 +514,16 @@ function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                         style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
                     />
                 </div>
-                <svg width={OVAL_RX * 2 + 24} height={OVAL_RY * 2 + 24} style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)' }}>
-                    <ellipse cx={OVAL_RX + 12} cy={OVAL_RY + 12} rx={OVAL_RX} ry={OVAL_RY} fill="none" stroke="#f0f0f0" strokeWidth="6" />
-                    <ellipse
-                        cx={OVAL_RX + 12} cy={OVAL_RY + 12} rx={OVAL_RX} ry={OVAL_RY}
+                <svg width={OVAL_RX * 2 + 24} height={OVAL_RY * 2 + 24} style={{ position: 'absolute', top: 0, left: 0 }}>
+                    <ellipse cx={cx} cy={cy} rx={OVAL_RX} ry={OVAL_RY} fill="none" stroke="#f0f0f0" strokeWidth="6" />
+                    {/* CHANGED: progress arc starts at the top and goes clockwise; no rotate(-90deg), which turned the tall oval into a wide one */}
+                    <path
+                        d={`M ${cx} ${cy - OVAL_RY} A ${OVAL_RX} ${OVAL_RY} 0 0 1 ${cx} ${cy + OVAL_RY} A ${OVAL_RX} ${OVAL_RY} 0 0 1 ${cx} ${cy - OVAL_RY}`}
+                        pathLength="1"
                         fill="none" stroke={ringColor} strokeWidth="6" strokeLinecap="round"
-                        strokeDasharray={OVAL_CIRCUMFERENCE}
-                        strokeDashoffset={dashOffset}
-                        style={{ transition: 'stroke-dashoffset 0.15s linear, stroke 0.2s' }}
+                        strokeDasharray="1"
+                        strokeDashoffset={1 - ringProgress}
+                        style={{ opacity: ringProgress > 0 ? 1 : 0, transition: 'stroke-dashoffset 0.15s linear, stroke 0.2s' }}
                     />
                 </svg>
             </div>

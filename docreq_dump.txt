@@ -1,0 +1,339 @@
+﻿
+> /*  2. Document Requests (from admin) â€” upload directly, no category   */
+  /*                                                                       */
+  /*  Files are never linked to directly. View/Download always go        */
+  /*  through a protected backend route (view/download by id) that       */
+  /*  checks the document belongs to the logged-in volunteer first.      */
+  /* ------------------------------------------------------------------ */
+  
+  const DOC_REQUEST_STATUS = {
+      pending_submission: { background: '#fffbeb', color: '#b45309', label: 'Pending Submission' },
+      submitted:          { background: '#fff7e0', color: '#96720b', label: 'Pending Review' },
+      approved:           { background: '#f0fdf4', color: '#16a34a', label: 'Approved' },
+      rejected:           { background: '#fdecec', color: '#cc0000', label: 'Rejected' },
+  };
+  
+  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 
+'numeric' }) : 'â€”');
+  
+  /* Protected link builders â€” always route through the backend, never a raw storage URL. */
+  const approvedViewHref     = (doc) => (doc.has_file ? route('volunteer.file201.approved.view', doc.id) : null);
+  const approvedDownloadHref = (doc) => (doc.has_file ? route('volunteer.file201.approved.download', doc.id) : null);
+  
+  export default function VolunteerFile201({ approvedFiles, documentRequests, folders }) {
+      const docs = approvedFiles || [];
+      const adminRequests = documentRequests || [];
+      const folderList = folders || [];
+  
+      const [showNewFolder, setShowNewFolder] = useState(false);
+      const [openFolderId, setOpenFolderId] = useState(null);
+      const [approvedFilesModal, setApprovedFilesModal] = useState(null); // the approved group row being viewed
+      const [statusTab, setStatusTab] = useState('approved'); // 'approved' | 'rejected'
+      const [statusFilesModal, setStatusFilesModal] = useState(null); // { title, files } for rejected group view
+  
+      /* ---- Upload to fulfill a Document Request (no category -- up to 10 files) ---- */
+      const uploadForm = useForm({ files: [], document_request_id: null });
+      const [activeRequest, setActiveRequest] = useState(null);
+  
+      const openUploadForRequest = (req) => {
+          uploadForm.setData({ files: [], document_request_id: req.id });
+          setActiveRequest(req);
+      };
+  
+      const closeUpload = () => {
+          setActiveRequest(null);
+          uploadForm.reset();
+      };
+  
+      const handleFilesChange = (e) => {
+          const picked = Array.from(e.target.files).slice(0, 10);
+          uploadForm.setData('files', picked);
+      };
+  
+      const removeSelectedFile = (index) => {
+          uploadForm.setData('files', uploadForm.data.files.filter((_, i) => i !== index));
+      };
+  
+      const handleUpload = (e) => {
+          e.preventDefault();
+          uploadForm.post(route('volunteer.file201.uploads.store'), {
+              forceFormData: true,
+              preserveScroll: true,
+              onSuccess: closeUpload,
+          });
+      };
+  
+      /* ---- Approved files / folders ---- */
+      const unfiled = docs.filter(d => d.is_group
+          ? (d.files || []).some(f => !f.folder_id)
+          : !d.folder_id
+      );
+      const openFolder = folderList.find(f => f.id === openFolderId) || null;
+  
+      /* Flatten group files too, so a file moved into a folder shows up there
+         even if it was originally approved as part of a batch/group. */
+      const allIndividualFiles = docs.flatMap(d =>
+          d.is_group ? d.files.map(f => ({ ...f, name: f.original_name, date: d.date })) : [d]
+      );
+      const folderFiles = openFolder ? allIndividualFiles.filter(d => d.folder_id === openFolder.id) : [];
+>     /* ---- Per-file status across all document requests (for the Rejected section) ---- */
+      const rejectedUploads = [];
+      adminRequests.forEach(req => {
+          (req.uploads || []).forEach(u => {
+              if (u.status === 'rejected') rejectedUploads.push({ ...u, request: req });
+          });
+      });
+  
+      /* Group by the request they came from, so a multi-file request shows as one row. */
+      const groupByRequest = (uploads) => {
+          const map = new Map();
+          uploads.forEach(u => {
+              const key = u.request.id;
+              if (!map.has(key)) map.set(key, { request: u.request, files: [] });
+              map.get(key).files.push(u);
+          });
+          return Array.from(map.values());
+      };
+      const rejectedGroups = groupByRequest(rejectedUploads);
+  
+      /* ---- Folders ---- */
+      const folderForm = useForm({ name: '' });
+  
+      const handleCreateFolder = (e) => {
+          e.preventDefault();
+          if (!folderForm.data.name.trim()) return;
+          folderForm.transform(data => ({ ...data, parent_id: openFolderId }));
+          folderForm.post(route('volunteer.file201.folders.store'), {
+              preserveScroll: true,
+              onSuccess: () => { folderForm.reset(); folderForm.transform(data => data); setShowNewFolder(false); },
+          });
+      };
+  
+      const handleDeleteFolder = (folder) => {
+          if (confirm(`Delete folder "${folder.name}"? Kasama ang mga subfolder sa loob nito. Ang mga file ay babalik 
+sa "Approved" (hindi made-delete).`)) {
+              router.delete(route('volunteer.file201.folders.destroy', folder.id), {
+                  preserveScroll: true,
+                  onSuccess: () => navigateToFolder(folder.parent_id || null),
+              });
+          }
+      };
+  
+      const moveDoc = (doc, folderId) => {
+          router.patch(route('volunteer.file201.documents.move', doc.id), {
+              folder_id: folderId === '' ? null : Number(folderId),
+          }, { preserveScroll: true });
+      };
+  
+      /* Move every file inside an approved-request GROUP to a folder in one go. */
+      const moveGroupDocs = (files, folderId) => {
+          (files || []).forEach((f) => {
+              if (!f.has_file && !f.id) return;
+              router.patch(route('volunteer.file201.documents.move', f.id), {
+                  folder_id: folderId === '' ? null : Number(folderId),
+              }, { preserveScroll: true });
+          });
+      };
+  
+      // Keep the approved-files modal's data in sync if the underlying prop refreshes
+      const liveApprovedFilesModal = approvedFilesModal
+          ? docs.find(d => d.is_group && d.id === approvedFilesModal.id) || null
+          : null;
+  
+      const downloadAllApprovedFiles = (files) => {
+          files.forEach((f, i) => {
+              setTimeout(() => {
+                  if (!f.has_file) return;
+                  const link = document.createElement('a');
+                  link.href = route('volunteer.file201.approved.download', f.id);
+                  link.download = '';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+              }, i * 500);
+          });
+      };
+>                 <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>Your approved files, folders, and 
+document requests â€” all in one place.</div>
+              </div>
+  
+              {/* ============================================================ */}
+              {/* 1. APPROVED / REJECTED (tabbed)                               */}
+              {/* ============================================================ */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', 
+flexWrap: 'wrap', marginBottom: '12px' }}>
+                  <span style={subheading}>Approved Files &amp; Folders</span>
+              </div>
+  
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                  <StatusTabButton active={statusTab === 'approved'} onClick={() => setStatusTab('approved')} 
+label="Approved" count={unfiled.length} activeColor="#16a34a" />
+                  <StatusTabButton active={statusTab === 'rejected'} onClick={() => setStatusTab('rejected')} 
+label="Rejected" count={rejectedUploads.length} activeColor="#cc0000" />
+              </div>
+  
+              {statusTab === 'approved' && (
+                  <>
+                      <DataTable
+                          cardStyle={cardStyle}
+                          empty="Walang bagong approved file. Kapag na-approve ang dokumento mo, lalabas dito para 
+mailipat mo sa folder."
+                          columns={['Document Name', 'Files']}
+                          rowOnClick={unfiled.map(d => d.is_group
+                              ? () => setApprovedFilesModal(d)
+                              : () => { const href = approvedViewHref(d); if (href) window.open(href, '_blank', 
+'noopener'); }
+                          )}
+                          rows={unfiled.map(d => d.is_group ? [
+                              <div>
+                                  <strong style={{ color: '#111', fontWeight: 600 }}>{d.name}</strong>
+                                  <div style={{ fontSize: '10.5px', color: '#999', marginTop: '4px' 
+}}>{fmtDate(d.date)}</div>
+                              </div>,
+                              <button onClick={(e) => { e.stopPropagation(); setApprovedFilesModal(d); }} style={{
+                                  fontSize: '10.5px', padding: '5px 10px', borderRadius: '6px', border: 'none',
+                                  background: '#CC0000', color: 'white', fontWeight: '600', cursor: 'pointer', 
+fontFamily: 'inherit', whiteSpace: 'nowrap',
+                              }}>
+                                  View {d.files.length} File{d.files.length !== 1 ? 's' : ''}
+                              </button>,
+                          ] : [
+                              <div>
+                                  <FileNameLink doc={d} />
+                                  <div style={{ fontSize: '10.5px', color: '#999', marginTop: '4px' 
+}}>{fmtDate(d.date)}</div>
+                              </div>,
+                              <DownloadButton href={approvedDownloadHref(d)} />,
+                          ])}
+                          keys={unfiled.map(d => d.id)}
+                      />
+                      {unfiled.length > 0 && folderList.length === 0 && (
+                          <div style={{ fontSize: '10.5px', color: '#b45309', marginTop: '8px' }}>
+                              Wala ka pang folder. Gumawa muna sa "My Folders" sa baba para may mapaglipatan.
+                          </div>
+                      )}
+  
+                      {/* My Folders */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 
+'10px', flexWrap: 'wrap', margin: '24px 0 10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                              <span
+                                  onClick={() => navigateToFolder(null)}
+                                  style={{ ...sectionTitle, cursor: openFolder ? 'pointer' : 'default', color: 
+openFolder ? '#888' : '#111' }}
+                              >My Folders</span>
+                              {breadcrumb.map((f, i) => (
+                                  <span key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span style={{ color: '#ccc', fontSize: '11px' }}>/</span>
+                                      <span
+                                          onClick={() => i < breadcrumb.length - 1 && navigateToFolder(f.id)}
+                                          style={{
+                                              ...sectionTitle,
+                                              cursor: i < breadcrumb.length - 1 ? 'pointer' : 'default',
+                                              color: i < breadcrumb.length - 1 ? '#888' : '#111',
+                                          }}
+                                      >{f.name}</span>
+                                  </span>
+                              ))}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                              {openFolder && (
+                                  <button type="button" onClick={() => handleDeleteFolder(openFolder)} style={{
+                                      background: 'white', color: '#CC0000', border: '1px solid #f5c6c6', 
+borderRadius: '8px',
+>             {/* 2. DOCUMENT REQUESTS (from admin) -- only on the Approved tab; */}
+              {/* Rejected tab already lists its own requests above.            */}
+              {/* ============================================================ */}
+              {statusTab === 'approved' && (
+              <>
+>             <div style={{ ...subheading, margin: '28px 0 10px' }}>Document Requests</div>
+              <DataTable
+                  cardStyle={cardStyle}
+>                 empty="No document requests from the admin yet."
+                  columns={['Document Requested', 'Instructions', 'Due Date', 'Requested By', 'Status', 'Action']}
+                  rows={adminRequests.map(req => {
+                      const uploads = req.uploads || [];
+                      const uploadCount = uploads.length;
+                      const approvedCount = uploads.filter(u => u.status === 'approved').length;
+                      const rejectedCount = uploads.filter(u => u.status === 'rejected').length;
+                      const submittedCount = uploads.filter(u => u.status === 'submitted').length;
+                      const isFullyApproved = uploadCount > 0 && approvedCount === uploadCount;
+                      return [
+                          <strong style={{ color: '#111', fontWeight: 600 }}>{req.document_name}</strong>,
+                          req.instructions || '-',
+                          req.due_date ? fmtDate(req.due_date) : '-',
+                          req.requested_by || 'Administrator',
+                          uploadCount === 0 ? (
+                              <span style={{ color: '#ccc' }}>-</span>
+                          ) : isFullyApproved ? (
+                              <div
+                                  onClick={() => {
+                                      const grp = docs.find(d => d.is_group && d.document_request_id === req.id);
+                                      setStatusTab('approved');
+                                      if (grp) setApprovedFilesModal(grp);
+                                  }}
+                                  style={{ color: '#16a34a', cursor: 'pointer', textDecoration: 'underline', 
+fontWeight: '700', fontSize: '11px' }}
+                              >&#10003; Fully Approved</div>
+                          ) : (
+                              <div style={{ fontSize: '10.5px', lineHeight: '1.8' }}>
+                                  {approvedCount > 0 && (
+                                      <div
+                                          onClick={() => {
+                                              const grp = docs.find(d => d.is_group && d.document_request_id === 
+req.id);
+                                              setStatusTab('approved');
+                                              if (grp) setApprovedFilesModal(grp);
+                                          }}
+                                          style={{ color: '#16a34a', cursor: 'pointer', textDecoration: 'underline', 
+fontWeight: '600' }}
+                                      >{approvedCount} Approved</div>
+                                  )}
+                                  {rejectedCount > 0 && (
+                                      <div
+                                          onClick={() => {
+                                              const grp = rejectedGroups.find(g => g.request.id === req.id);
+                                              setStatusTab('rejected');
+                                              if (grp) setStatusFilesModal({ title: grp.request.document_name, files: 
+grp.files, request: grp.request });
+                                          }}
+                                          style={{ color: '#CC0000', cursor: 'pointer', textDecoration: 'underline', 
+fontWeight: '600' }}
+                                      >{rejectedCount} Rejected</div>
+                                  )}
+                                  {submittedCount > 0 && <div style={{ color: '#96720b' }}>{submittedCount} Pending 
+Review</div>}
+                              </div>
+                          ),
+                          req.status === 'pending_submission' ? (
+                              <button
+                                  onClick={() => openUploadForRequest(req)}
+                                  style={{ background: '#CC0000', color: '#fff', border: 'none', padding: '5px 12px', 
+borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                              >
+                                  Upload
+                              </button>
+                          ) : <span style={{ color: '#ccc' }}>-</span>,
+                      ];
+                  })}
+                  keys={adminRequests.map(req => req.id)}
+              />
+              </>
+              )}
+  
+              {/* Rejected files modal -- shows each file's remarks within a request */}
+              {statusFilesModal && (
+                  <div
+                      role="dialog"
+                      aria-modal="true"
+                      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', 
+alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' }}
+                      onClick={() => setStatusFilesModal(null)}
+                  >
+                      <div style={{ ...cardStyle, width: '100%', maxWidth: '460px', maxHeight: '80vh', overflowY: 
+'auto' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', 
+justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                              <span style={sectionTitle}>{statusFilesModal.title}</span>
+
+

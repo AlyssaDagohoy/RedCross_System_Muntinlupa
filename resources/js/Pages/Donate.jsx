@@ -21,28 +21,28 @@ export default function Donate({ auth }) {
             ]
         },
         {
-            label: 'About Us', href: route('about'),
+            label: 'About Us', href: route('login'),
             children: [
-                { label: 'Who We Are', href: route('about') + '#who-we-are' },
-                { label: 'Mission & Vision', href: route('about') + '#mission-vision' },
-                { label: 'Our Team', href: route('about') + '#our-team' },
-                { label: 'Our Services', href: route('about') + '#our-services' },
+                { label: 'Who We Are', href: route('login') + '#who-we-are' },
+                { label: 'Mission & Vision', href: route('login') + '#mission-vision' },
+                { label: 'Our Team', href: route('login') + '#our-team' },
+                { label: 'Our Services', href: route('login') + '#our-services' },
             ]
         },
         {
-            label: 'Volunteer', href: route('volunteer'),
+            label: 'Volunteer', href: route('login'),
             children: [
-                { label: 'Become a Volunteer', href: `${route('volunteer')}#become` },
-                { label: 'Red Cross 143 Program', href: `${route('volunteer')}#program` },
-                { label: 'Volunteer Service FAQs', href: `${route('volunteer')}#faqs` },
+                { label: 'Become a Volunteer', href: `${route('login')}#become` },
+                { label: 'Red Cross 143 Program', href: `${route('login')}#program` },
+                { label: 'Volunteer Service FAQs', href: `${route('login')}#faqs` },
             ]
         },
         {
-            label: 'Contact Us', href: route('contact'),
+            label: 'Contact Us', href: route('login'),
             children: [
-                { label: 'Get in Touch', href: route('contact') + '#get-in-touch' },
-                { label: 'Find Us', href: route('contact') + '#find-us' },
-                { label: 'Emergency Hotlines', href: route('contact') + '#emergency-hotlines' },
+                { label: 'Get in Touch', href: route('login') + '#get-in-touch' },
+                { label: 'Find Us', href: route('login') + '#find-us' },
+                { label: 'Emergency Hotlines', href: route('login') + '#emergency-hotlines' },
             ]
         },
     ];
@@ -542,13 +542,13 @@ export default function Donate({ auth }) {
                             Be A Volunteer Instead
                         </h2>
                         <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
-                            <Link href={`${route('volunteer')}#become`} style={{
+                            <Link href={`${route('login')}#become`} style={{
                                 background: 'white', color: '#DC2626', padding: '13px 36px',
                                 borderRadius: '4px', fontSize: '13px', fontWeight: '700',
                                 textDecoration: 'none', letterSpacing: '0.5px',
                                 fontFamily: 'Oswald, sans-serif', textTransform: 'uppercase',
                             }}>Join Us</Link>
-                            <Link href={route('contact')} style={{
+                            <Link href={route('login')} style={{
                                 background: 'transparent', color: 'white', padding: '13px 36px',
                                 borderRadius: '4px', fontSize: '13px', fontWeight: '600',
                                 textDecoration: 'none', letterSpacing: '0.5px',
