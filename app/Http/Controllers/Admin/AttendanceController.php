@@ -15,7 +15,6 @@ class AttendanceController extends Controller
     public function index(Request $request)
     {
         Attendance::markAbsences();
-        Attendance::markAbsences();
         $query = Attendance::with(['user', 'activity'])
             ->orderBy('date', 'desc');
 
@@ -50,7 +49,6 @@ class AttendanceController extends Controller
 
     public function exportPdf(Request $request)
     {
-        Attendance::markAbsences();
         Attendance::markAbsences();
         $query = Attendance::with(['user', 'activity'])
             ->orderBy('date', 'desc');
@@ -87,6 +85,14 @@ class AttendanceController extends Controller
             $name = $record->user ? $record->user->name : '-';
             $email = $record->user ? $record->user->email : '-';
             $activity = $record->activity ? $record->activity->name : '-';
+            $timeInLabel = $record->time_in_status ? ucwords(str_replace('_', ' ', $record->time_in_status)) : '-';
+            $statusLabel = match (true) {
+                $record->status === 'absent'       => 'Absent',
+                $record->status === 'needs_review' => 'Needs Review',
+                $record->status === 'rejected'     => 'Rejected',
+                !$record->time_out                 => 'Ongoing',
+                default                            => 'Present',
+            };
 
             $rows .= "
             <tr>
@@ -95,8 +101,10 @@ class AttendanceController extends Controller
                 <td>{$activity}</td>
                 <td>{$date}</td>
                 <td style='color: green'>{$timeIn}</td>
+                <td>{$timeInLabel}</td>
                 <td style='color: red'>{$timeOut}</td>
                 <td>{$hours}</td>
+                <td>{$statusLabel}</td>
             </tr>";
         }
 
@@ -128,8 +136,10 @@ class AttendanceController extends Controller
                         <th>Activity</th>
                         <th>Date</th>
                         <th>Time In</th>
+                        <th>Arrival</th>
                         <th>Time Out</th>
                         <th>Hours</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>

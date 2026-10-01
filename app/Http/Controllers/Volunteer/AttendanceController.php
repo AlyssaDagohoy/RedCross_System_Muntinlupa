@@ -27,7 +27,17 @@ class AttendanceController extends Controller
         // most recent time_in among ties. Absent records are skipped so they are never
         // mistaken for an ongoing time in.
         $todayRecord = Attendance::where('user_id', $user->id)
-            ->whereDate('date', today())
+            ->where(function ($q) {
+                // today's record, or yesterday's still-open record (activity that runs past midnight)
+                $q->whereDate('date', today())
+                  ->orWhere(function ($q2) {
+                      $q2->whereDate('date', today()->subDay())
+                         ->where('status', 'present')
+                         ->whereNotNull('time_in')
+                         ->whereNull('time_out');
+                  });
+            })
+            ->where('status', '!=', 'needs_review')
             ->where('status', '!=', 'absent')
             ->with('activity')
             ->orderByRaw('time_out IS NULL DESC')
@@ -54,13 +64,18 @@ class AttendanceController extends Controller
         // looks its activity up in this list.
         $activities = $user->activities()
             ->where('status', '!=', 'cancelled')
-            ->whereDate('date', today())
-            ->get(['activities.id', 'activities.name', 'activities.location_name', 'activities.date', 'activities.latitude', 'activities.longitude', 'activities.radius_meters']);
+            ->whereDate('date', '>=', today()->subDay())
+            ->whereDate('date', '<=', today())
+            ->get(['activities.id', 'activities.name', 'activities.location_name', 'activities.date', 'activities.latitude', 'activities.longitude', 'activities.radius_meters', 'activities.start_time', 'activities.end_time']);
 
         // What the "Select Activity" dropdown shows: today's activities the volunteer
         // has NOT timed in for yet. Ones already timed in, completed, or Absent are left out.
+        $activities = $activities->filter(function ($a) {
+            return Carbon::parse($a->date)->isToday() || $a->timeOutClosesAt()->isFuture();
+        })->values();
+
         $timedInActivityIds = Attendance::where('user_id', $user->id)
-            ->whereDate('date', today())
+            ->whereDate('date', '>=', today()->subDay())
             ->pluck('activity_id')
             ->all();
 

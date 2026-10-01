@@ -33,7 +33,9 @@ function RunningTimer({ record, activity }) {
         return () => clearInterval(interval);
     }, [record?.time_in, record?.time_out]);
 
-    const punctuality = getPunctuality(record?.time_in, activity?.start_time);
+    const punctuality = record?.time_in_status
+        ? (record.time_in_status === 'on_time' ? 'ontime' : record.time_in_status)
+        : getPunctuality(record?.time_in, activity?.start_time);
 
     return (
         <div style={{
@@ -354,6 +356,32 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
+    // NEW: "too early" confirmation. The server asks for it, Confirm resends with confirm_early.
+    const [earlyConfirm, setEarlyConfirm] = useState('');
+    const [lateConfirm, setLateConfirm] = useState('');
+    const lastScan = useRef(null);
+
+    const resendConfirmed = () => {
+        if (!lastScan.current) return;
+        setEarlyConfirm(''); setLateConfirm('');
+        router.post(route(mode === 'checkin' ? 'volunteer.face.timein' : 'volunteer.face.timeout'), {
+            ...lastScan.current,
+            confirm_early: true,
+            confirm_late: true,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: () => onSuccess(),
+            onError: (errors) => {
+                setError(Object.values(errors)[0] || 'Something went wrong. Please try again.');
+                setRingColor('#DC2626');
+                setSubmitting(false);
+                holdCounter.current = 0;
+                setRingProgress(0);
+            },
+        });
+    };
+
     useEffect(() => {
         (async () => {
             if (!window.faceapi) {
@@ -425,6 +453,12 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
 
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
+                        lastScan.current = {
+                            face_descriptor: Array.from(result.descriptor),
+                            latitude: pos.coords.latitude,
+                            longitude: pos.coords.longitude,
+                            activity_id: activityId ?? null,
+                        };
                         router.post(route(mode === 'checkin' ? 'volunteer.face.timein' : 'volunteer.face.timeout'), {
                             face_descriptor: Array.from(result.descriptor),
                             latitude: pos.coords.latitude,
@@ -438,6 +472,14 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                             onSuccess: () => onSuccess(),
                             onError: (errors) => {
                                 console.error('Time in/out errors:', errors);
+                                if (errors.confirm_late) {
+                                    setLateConfirm(errors.confirm_late);
+                                    return;
+                                }
+                                if (errors.confirm_early) {
+                                    setEarlyConfirm(errors.confirm_early);
+                                    return;
+                                }
                                 setError(Object.values(errors)[0] || 'Face not recognized or out of range. Please try again.');
                                 setRingColor('#DC2626');
                                 setSubmitting(false);
@@ -496,6 +538,54 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                     {statusText}
                 </div>
             </div>
+
+            {(earlyConfirm || lateConfirm) && (
+                <div style={{
+                    position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)',
+                    display: 'grid', placeItems: 'center', padding: '16px', zIndex: 10,
+                }}>
+                    <div role="dialog" aria-modal="true" style={{
+                        background: 'white', borderRadius: '16px', width: '100%', maxWidth: '320px',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center', padding: '28px 24px 24px',
+                    }}>
+                        <div style={{
+                            width: '52px', height: '52px', borderRadius: '50%', margin: '0 auto 14px',
+                            background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '24px', color: '#b45309', fontWeight: '700',
+                        }}>!</div>
+                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#111', marginBottom: '6px' }}>
+                            {lateConfirm ? (mode === 'checkin' ? 'Late Time In' : 'Timing Out Late') : (mode === 'checkin' ? 'Too Early to Time In' : 'Too Early to Time Out')}
+                        </div>
+                        <div style={{ fontSize: '12.5px', color: '#666', lineHeight: '1.6', marginBottom: '18px' }}>
+                            {earlyConfirm || lateConfirm}
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                type="button"
+                                onClick={() => { if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop()); onClose(); }}
+                                style={{
+                                    flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid #ddd',
+                                    background: 'white', color: '#444', fontSize: '13px', fontWeight: '600',
+                                    cursor: 'pointer', fontFamily: 'inherit',
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={resendConfirmed}
+                                style={{
+                                    flex: 1, padding: '11px', borderRadius: '10px', border: 'none',
+                                    background: '#CC0000', color: 'white', fontSize: '13px', fontWeight: '600',
+                                    cursor: 'pointer', fontFamily: 'inherit',
+                                }}
+                            >
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {error && (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '10px', padding: '10px 16px', fontSize: '12px', marginBottom: '16px', maxWidth: '320px', textAlign: 'center' }}>

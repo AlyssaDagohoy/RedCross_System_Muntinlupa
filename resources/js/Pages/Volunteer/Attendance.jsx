@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link, usePage, router } from '@inertiajs/react';
 import FaceAttendance from '@/Components/FaceAttendance';
 import { useState } from 'react';
 import VolunteerShell from '../../Components/VolunteerShell';
@@ -6,6 +6,23 @@ import VolunteerShell from '../../Components/VolunteerShell';
 export default function VolunteerAttendance({ auth, attendances, todayRecord, activities, availableActivities }) {
     const { flash } = usePage().props;
     const [selectedRecord, setSelectedRecord] = useState(null);
+
+    // Request Attendance Review
+    const [reviewOpen, setReviewOpen] = useState(false);
+    const [reviewReason, setReviewReason] = useState('');
+    const [reviewBusy, setReviewBusy] = useState(false);
+    const [reviewErr, setReviewErr] = useState('');
+
+    const submitReview = () => {
+        setReviewBusy(true);
+        setReviewErr('');
+        router.post(route('volunteer.attendance.request-review', selectedRecord.id), { reason: reviewReason }, {
+            preserveScroll: true,
+            onSuccess: () => { setSelectedRecord(null); setReviewOpen(false); setReviewReason(''); },
+            onError: (e) => setReviewErr(Object.values(e)[0] || 'Something went wrong. Please try again.'),
+            onFinish: () => setReviewBusy(false),
+        });
+    };
 
     const formatTime = (datetime) => {
         if (!datetime) return '-';
@@ -32,6 +49,8 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
     // Absent = the activity ended with no time in. Ongoing = timed in, no time out yet.
     const statusOf = (record) => {
         if (record.status === 'absent') return { label: 'Absent', bg: '#fef2f2', color: '#CC0000' };
+        if (record.status === 'needs_review') return { label: 'Needs Review', bg: '#fffbeb', color: '#b45309' };
+        if (record.status === 'rejected') return { label: 'Rejected', bg: '#fef2f2', color: '#CC0000' };
         if (!record.time_out) return { label: 'Ongoing', bg: '#fffbeb', color: '#b45309' };
         return { label: 'Present', bg: '#f0fdf4', color: '#16a34a' };
     };
@@ -114,7 +133,7 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                                     const s = statusOf(record);
                                     const isAbsent = record.status === 'absent';
                                     return (
-                                        <tr key={record.id || i} onClick={() => setSelectedRecord(record)}>
+                                        <tr key={record.id || i} onClick={() => { setSelectedRecord(record); setReviewOpen(false); setReviewReason(''); setReviewErr(''); }}>
                                             <td style={{ fontWeight: '500', color: '#111' }}>{formatDate(record.date)}</td>
                                             <td style={{ color: '#333' }}>{record.activity?.name || '-'}</td>
                                             <td style={{ color: '#333' }}>{isAbsent ? '-' : ((record.attendance_method === 'fingerprint' ? 'Fingerprint' : 'Face Scan'))}</td>
@@ -123,7 +142,7 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                                                     {s.label}
                                                 </span>
                                             </td>
-                                            <td style={{ color: '#16a34a' }}>{formatTime(record.time_in)}</td>
+                                            <td style={{ color: '#16a34a' }}>{formatTime(record.time_in)}{isLate(record) && <span style={{ marginLeft: '6px', fontSize: '9.5px', fontWeight: '700', color: '#CC0000', background: '#fef2f2', padding: '2px 6px', borderRadius: '8px' }}>Late</span>}</td>
                                             <td style={{ color: '#CC0000' }}>{formatTime(record.time_out)}</td>
                                         </tr>
                                     );
@@ -213,6 +232,63 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                                 </div>
                             </div>
 
+                            {(() => {
+                                const rec = selectedRecord;
+                                const requested = !!rec.review_requested_at;
+                                const reviewed = !!rec.reviewed_at;
+                                const canRequest = rec.time_in && !rec.time_out
+                                    && ['present', 'needs_review'].includes(rec.status) && !requested;
+                                const note = { borderRadius: '8px', padding: '10px 14px', fontSize: '12px', lineHeight: '1.6', marginBottom: '12px' };
+
+                                return (
+                                    <>
+                                        {reviewed && rec.admin_remark && (
+                                            <div style={{ ...note, background: '#f9f9f9', color: '#333' }}>
+                                                <span style={{ fontWeight: '600', color: '#CC0000' }}>Admin remark:</span> {rec.admin_remark}
+                                            </div>
+                                        )}
+                                        {requested && !reviewed && (
+                                            <div style={{ ...note, background: '#fffbeb', color: '#92400e' }}>
+                                                Review request sent. Waiting for the admin.
+                                            </div>
+                                        )}
+                                        {rec.status === 'needs_review' && !requested && !rec.time_out && (
+                                            <div style={{ ...note, background: '#fffbeb', color: '#92400e' }}>
+                                                No Time Out was recorded, so this record is waiting for admin review. You can add a reason below.
+                                            </div>
+                                        )}
+                                        {canRequest && !reviewOpen && (
+                                            <button type="button" onClick={() => setReviewOpen(true)} style={{
+                                                width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #CC0000',
+                                                background: 'white', color: '#CC0000', fontSize: '12px', fontWeight: '600',
+                                                cursor: 'pointer', fontFamily: 'inherit', marginBottom: '12px',
+                                            }}>
+                                                Request Attendance Review
+                                            </button>
+                                        )}
+                                        {canRequest && reviewOpen && (
+                                            <div style={{ marginBottom: '12px' }}>
+                                                <div style={{ fontSize: '10px', fontWeight: '700', color: '#bbb', letterSpacing: '0.5px', marginBottom: '5px' }}>REASON</div>
+                                                <textarea
+                                                    value={reviewReason}
+                                                    onChange={e => setReviewReason(e.target.value)}
+                                                    rows={3}
+                                                    placeholder="Example: I forgot to time out and already left the activity location."
+                                                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #ebebeb', borderRadius: '7px', fontSize: '12px', fontFamily: 'inherit', resize: 'vertical' }}
+                                                />
+                                                {reviewErr && <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#991b1b' }}>{reviewErr}</div>}
+                                                <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                                                    <button type="button" onClick={() => setReviewOpen(false)} style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1px solid #ddd', background: 'white', color: '#444', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                                                    <button type="button" onClick={submitReview} disabled={reviewBusy} style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', background: '#CC0000', color: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                                        {reviewBusy ? 'Sending...' : 'Send Request'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
+
                             <div style={{ background: '#f9f9f9', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: '#333' }}>
                                 <span style={{ color: '#CC0000', fontWeight: '600' }}>Assigned by:</span>{' '}
                                 {selectedRecord.activity?.assigned_by_role || 'Branch Coordination'}
@@ -225,6 +301,19 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
 
         </VolunteerShell>
     );
+}
+
+// Late = timed in more than 15 minutes after the activity start (same rule as the running timer).
+function isLate(record) {
+    const start = record.activity?.start_time;
+    if (!record.time_in || record.status === 'absent') return false;
+    if (record.time_in_status) return record.time_in_status === 'late';
+    if (!start) return false;
+    const inDate = new Date(record.time_in);
+    const [h, m] = start.split(':').map(Number);
+    const scheduled = new Date(inDate);
+    scheduled.setHours(h, m, 0, 0);
+    return (inDate - scheduled) / 60000 > 15;
 }
 
 function ClockDotIcon() {

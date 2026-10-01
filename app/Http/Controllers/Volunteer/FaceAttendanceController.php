@@ -18,6 +18,7 @@ class FaceAttendanceController extends Controller
      * people can pass. 0.45 is a safer start; raise to 0.5 if you get rejected too often.
      */
     private const FACE_MATCH_THRESHOLD = 0.45;
+
     public function registerFace(Request $request)
     {
         $request->validate([
@@ -41,18 +42,17 @@ class FaceAttendanceController extends Controller
             'face_descriptor.*' => 'numeric',
             'latitude'          => 'required|numeric',
             'longitude'         => 'required|numeric',
+            'confirm_early'     => 'sometimes|boolean',
+            'confirm_late'      => 'sometimes|boolean',
         ]);
 
         $user = auth()->user();
 
-        if ($error = $this->faceError($user, $request->face_descriptor)) {
-            return back()->withErrors(['face' => $error]);
-        }
-
         // The activity must be assigned to this volunteer and scheduled for today.
         $activity = $user->activities()
             ->where('activities.id', $request->activity_id)
-            ->whereDate('activities.date', today())
+            ->whereDate('activities.date', '>=', today()->subDay())
+            ->whereDate('activities.date', '<=', today())
             ->where('activities.status', '!=', 'cancelled')
             ->first();
 
@@ -60,15 +60,38 @@ class FaceAttendanceController extends Controller
             return back()->withErrors(['face' => 'This activity is not assigned to you or is not scheduled for today.']);
         }
 
-        // Time In window: opens 30 minutes before the start, closes when the activity ends.
         $now = Carbon::now();
 
-        if ($now->lt($activity->timeInOpensAt())) {
-            return back()->withErrors(['face' => 'Time in is not open yet. You can time in starting ' . $activity->timeInOpensAt()->format('g:i A') . '.']);
+        // Time In stays open until the activity ends.
+        if ($now->gt($activity->timeInClosesAt())) {
+            return back()->withErrors(['face' => 'Time in is closed. The activity has ended.']);
         }
 
-        if ($now->gt($activity->endsAt())) {
-            return back()->withErrors(['face' => 'This activity has already ended, so time in is closed.']);
+        // Hard limit: Time In is not open yet.
+        if ($now->lt($activity->timeInOpensAt())) {
+            return back()->withErrors(['face' => 'Time in opens at ' . $activity->timeInOpensAt()->format('g:i A') . '.']);
+        }
+
+        $status = $activity->timeInStatusAt($now);
+
+        // Early: the volunteer must confirm first.
+        if ($status === 'early' && !$request->boolean('confirm_early')) {
+            return back()->withErrors([
+                'confirm_early' => 'You are ' . $this->humanDuration($now, $activity->startsAt()) . ' early. Are you sure you want to time in now?',
+            ]);
+        }
+
+        // Late: the volunteer must confirm first.
+        if ($status === 'late' && !$request->boolean('confirm_late')) {
+            $window = (int) config('attendance.time_in_on_time_window', 15);
+            return back()->withErrors([
+                'confirm_late' => "You were given a {$window}-minute window, but you're late. You are "
+                    . $this->humanDuration($now, $activity->startsAt()) . ' past the start time. Time in anyway?',
+            ]);
+        }
+
+        if ($error = $this->faceError($user, $request->face_descriptor)) {
+            return back()->withErrors(['face' => $error]);
         }
 
         if ($error = $this->locationError($activity, $request->latitude, $request->longitude)) {
@@ -77,7 +100,7 @@ class FaceAttendanceController extends Controller
 
         $existing = Attendance::where('user_id', $user->id)
             ->where('activity_id', $activity->id)
-            ->whereDate('date', today())
+            ->whereDate('date', Carbon::parse($activity->date)->toDateString())
             ->first();
 
         if ($existing) {
@@ -87,8 +110,9 @@ class FaceAttendanceController extends Controller
         Attendance::create([
             'user_id'           => $user->id,
             'activity_id'       => $activity->id,
-            'date'              => today(),
-            'time_in'           => Carbon::now(),
+            'date'              => Carbon::parse($activity->date)->toDateString(),
+            'time_in'           => $now,
+            'time_in_status'    => $status,
             'latitude'          => $request->latitude,
             'longitude'         => $request->longitude,
             'attendance_method' => 'face',
@@ -99,7 +123,11 @@ class FaceAttendanceController extends Controller
         // must not turn a successful Time In into a 500 error.
         $this->notifySafely($user, new AttendanceRecorded('time_in', $activity->name));
 
-        return back()->with('message', 'Time in recorded successfully!');
+        return back()->with('message', match ($status) {
+            'early' => 'Time in recorded (early).',
+            'late'  => 'Time in recorded (late).',
+            default => 'Time in recorded successfully!',
+        });
     }
 
     public function timeOut(Request $request)
@@ -110,55 +138,106 @@ class FaceAttendanceController extends Controller
             'face_descriptor.*' => 'numeric',
             'latitude'          => 'required|numeric',
             'longitude'         => 'required|numeric',
+            'confirm_early'     => 'sometimes|boolean',
+            'confirm_late'      => 'sometimes|boolean',
         ]);
 
         $user = auth()->user();
+        $activity = Activity::findOrFail($request->activity_id);
+
+        $now = Carbon::now();
+
+        // Time Out stays open until the grace period after the end.
+        if ($now->gt($activity->timeOutClosesAt())) {
+            return back()->withErrors(['face' => 'Time out is closed. Please ask the admin to review your attendance.']);
+        }
+
+        $status = $activity->timeOutStatusAt($now);
+
+        // Early: the volunteer must confirm first.
+        if ($status === 'early' && !$request->boolean('confirm_early')) {
+            return back()->withErrors([
+                'confirm_early' => 'Timing out too early. You are ' . $this->humanDuration($now, $activity->endsAt()) . ' before the end time. Are you sure you want to time out now?',
+            ]);
+        }
+
+        // Late: after the end time but still inside the grace window. The volunteer must confirm.
+        if ($status === 'late' && !$request->boolean('confirm_late')) {
+            return back()->withErrors([
+                'confirm_late' => 'Timing Out Late. Your exact time will be recorded, but hours are counted only up to the activity end time. Continue?',
+            ]);
+        }
 
         if ($error = $this->faceError($user, $request->face_descriptor)) {
             return back()->withErrors(['face' => $error]);
         }
 
-        $activity = Activity::findOrFail($request->activity_id);
-
+        // Time Out must be inside the activity location too.
         if ($error = $this->locationError($activity, $request->latitude, $request->longitude)) {
             return back()->withErrors(['face' => $error]);
         }
 
+        // Use the activity's date (not today's date) so a Time Out after midnight still finds the record.
         $record = Attendance::where('user_id', $user->id)
-            ->where('activity_id', $request->activity_id)
-            ->whereDate('date', today())
+            ->where('activity_id', $activity->id)
+            ->whereDate('date', Carbon::parse($activity->date)->toDateString())
             ->first();
 
         if (!$record || !$record->time_in || $record->time_out) {
             return back()->withErrors(['face' => 'No valid time-in found for this activity.']);
         }
 
-        $timeOut = Carbon::now();
-        $hours = round($record->time_in->diffInMinutes($timeOut) / 60, 2);
+        $start = $activity->startsAt();
+        $end   = $activity->endsAt();
 
-        $leftEarly = false;
-        if ($activity->end_time) {
-            $scheduledEnd = Carbon::parse($activity->end_time)->setDateTime(
-                $timeOut->year, $timeOut->month, $timeOut->day,
-                Carbon::parse($activity->end_time)->hour,
-                Carbon::parse($activity->end_time)->minute
-            );
-            $leftEarly = $timeOut->lt($scheduledEnd);
-        }
+        // Hours run from the official start (or the actual Time In, if later)
+        // to the actual Time Out, but never past the official end.
+        $countedFrom  = $record->time_in->gt($start) ? $record->time_in : $start;
+        $countedUntil = $now->gt($end) ? $end : $now;
+        $minutes      = max(0, $countedFrom->diffInMinutes($countedUntil, false));
+        $hours        = round($minutes / 60, 2);
 
         $record->update([
-            'time_out'       => $timeOut,
-            'hours_rendered' => $hours,
-            'left_early'     => $leftEarly,
+            'time_out'           => $now,
+            'time_out_status'    => $status,
+            'time_out_latitude'  => $request->latitude,
+            'time_out_longitude' => $request->longitude,
+            'hours_rendered'     => $hours,
+            'left_early'         => $status === 'early',
+            'late_time_out'      => $status === 'late',
         ]);
 
         // Same protection as Time In: the record is saved, so don't fail the request.
-        $this->notifySafely($user, new AttendanceRecorded('time_out', $activity->name, $hours, $leftEarly));
+        $this->notifySafely($user, new AttendanceRecorded('time_out', $activity->name, $hours, $status === 'early'));
 
-        return back()->with('message', $leftEarly
-            ? "Time out recorded (left early). Hours rendered: {$hours}"
-            : "Time out recorded! Hours rendered: {$hours}"
-        );
+        return back()->with('message', match ($status) {
+            'late'  => "Time out recorded (late). Hours rendered: {$hours}",
+            'early' => "Time out recorded (left early). Hours rendered: {$hours}",
+            default => "Time out recorded! Hours rendered: {$hours}",
+        });
+    }
+
+    /** "1 hour 5 minutes", "12 minutes", etc. Used in the modal messages. */
+    private function humanDuration(Carbon $a, Carbon $b): string
+    {
+        $mins = (int) floor(abs($a->diffInMinutes($b, false)));
+
+        if ($mins < 1) {
+            return 'less than a minute';
+        }
+
+        $h = intdiv($mins, 60);
+        $m = $mins % 60;
+        $parts = [];
+
+        if ($h > 0) {
+            $parts[] = $h . ' hour' . ($h > 1 ? 's' : '');
+        }
+        if ($m > 0) {
+            $parts[] = $m . ' minute' . ($m > 1 ? 's' : '');
+        }
+
+        return implode(' ', $parts);
     }
 
     /**

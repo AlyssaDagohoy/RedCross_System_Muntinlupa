@@ -20,11 +20,21 @@ class Attendance extends Model
         'time_in',
         'time_out',
         'left_early',
+        'late_time_out',
         'hours_rendered',
         'latitude',
         'longitude',
         'attendance_method',
+        'review_reason',
+        'review_requested_at',
+        'admin_remark',
+        'reviewed_by',
+        'reviewed_at',
         'status',
+        'time_in_status',
+        'time_out_status',
+        'time_out_latitude',
+        'time_out_longitude',
     ];
 
     protected $casts = [
@@ -32,7 +42,40 @@ class Attendance extends Model
         'time_out'   => 'datetime',
         'date'       => 'date',
         'left_early' => 'boolean',
+        'late_time_out' => 'boolean',
+        'review_requested_at' => 'datetime',
+        'reviewed_at'         => 'datetime',
     ];
+
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    /**
+     * Any record that has a Time In but no Time Out, and whose Time Out window
+     * has already closed, becomes "needs_review" so the admin can decide.
+     * Safe to call many times. Pass a user id to only check one volunteer.
+     */
+    public static function closeMissingTimeOuts(?int $userId = null): void
+    {
+        $records = self::with('activity')
+            ->where('status', 'present')
+            ->whereNotNull('time_in')
+            ->whereNull('time_out')
+            ->when($userId, fn ($q) => $q->where('user_id', $userId))
+            ->get();
+
+        foreach ($records as $record) {
+            $activity = $record->activity;
+
+            if (!$activity || $activity->timeOutClosesAt()->isFuture()) {
+                continue;
+            }
+
+            $record->update(['status' => 'needs_review']);
+        }
+    }
 
     public function user()
     {
@@ -51,6 +94,8 @@ class Attendance extends Model
      */
     public static function markAbsences(?int $userId = null): void
     {
+        self::closeMissingTimeOuts($userId);
+
         $activities = Activity::with(['volunteers' => function ($q) use ($userId) {
                 if ($userId) {
                     $q->where('users.id', $userId);
@@ -62,7 +107,7 @@ class Attendance extends Model
             ->get();
 
         foreach ($activities as $activity) {
-            if ($activity->endsAt()->isFuture()) {
+            if ($activity->timeInClosesAt()->isFuture()) {
                 continue;
             }
 

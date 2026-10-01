@@ -228,6 +228,8 @@ export default function AdminAttendance({ auth, attendances, volunteers, activit
                             )}
                         </div>
 
+                        <ReviewPanel records={attendances.filter(a => a.status === 'needs_review')} />
+
                         {/* TABLE */}
                         <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
                             <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
@@ -252,10 +254,20 @@ export default function AdminAttendance({ auth, attendances, volunteers, activit
                                                 <td style={{ padding: '13px 18px' }}>
                                                     <div style={{ fontSize: '12.5px', fontWeight: '600', color: '#111' }}>{record.user?.name ?? '-'}</div>
                                                     <div style={{ fontSize: '10.5px', color: '#bbb', marginTop: '1px' }}>{record.user?.email ?? ''}</div>
+                                                    {record.status && record.status !== 'present' && (
+                                                        <span style={{
+                                                            display: 'inline-block', marginTop: '5px', padding: '2px 8px', borderRadius: '8px',
+                                                            fontSize: '10px', fontWeight: '700',
+                                                            background: record.status === 'needs_review' ? '#fffbeb' : '#fef2f2',
+                                                            color: record.status === 'needs_review' ? '#b45309' : '#CC0000',
+                                                        }}>
+                                                            {record.status === 'absent' ? 'Absent' : record.status === 'needs_review' ? 'Needs Review' : 'Rejected'}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td style={{ padding: '13px 18px', fontSize: '12px', color: '#555' }}>{record.activity?.name ?? '-'}</td>
                                                 <td style={{ padding: '13px 18px', fontSize: '12px', color: '#555' }}>{formatDate(record.date)}</td>
-                                                <td style={{ padding: '13px 18px', fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>{formatTime(record.time_in)}</td>
+                                                <td style={{ padding: '13px 18px', fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>{formatTime(record.time_in)}<TimeInBadge record={record} /></td>
                                                 <td style={{ padding: '13px 18px', fontSize: '12px', color: '#CC0000', fontWeight: '600' }}>{formatTime(record.time_out)}</td>
                                                 <td style={{ padding: '13px 18px', fontSize: '12px', color: '#111', fontWeight: '600' }}>
                                                     {record.hours_rendered ? record.hours_rendered + ' hrs' : '-'}
@@ -274,6 +286,136 @@ export default function AdminAttendance({ auth, attendances, volunteers, activit
     );
 }
 
+function ReviewPanel({ records }) {
+    const [active, setActive] = useState(null);
+    const [remark, setRemark] = useState('');
+    const [adjTime, setAdjTime] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [err, setErr] = useState('');
+
+    if (!records || records.length === 0) return null;
+
+    const fmtTime = (dt) => dt ? new Date(dt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : '-';
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+
+    const open = (record, action) => {
+        setActive({ record, action });
+        setRemark('');
+        setAdjTime(record.activity?.end_time ? record.activity.end_time.slice(0, 5) : '');
+        setErr('');
+    };
+    const close = () => { setActive(null); setErr(''); };
+
+    const submit = () => {
+        setBusy(true);
+        router.post(route('admin.attendance.review', active.record.id), {
+            action: active.action,
+            remark: remark,
+            time_out: active.action === 'adjust' ? adjTime : null,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => close(),
+            onError: (e) => setErr(Object.values(e)[0] || 'Something went wrong.'),
+            onFinish: () => setBusy(false),
+        });
+    };
+
+    const titles = { approve: 'Approve attendance', adjust: 'Adjust Time Out', reject: 'Reject attendance' };
+    const btn = { padding: '6px 12px', borderRadius: '7px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', border: '1px solid #ebebeb', background: 'white', color: '#444' };
+
+    return (
+        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #fde68a', marginBottom: '20px', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: '#92400e' }}>Needs Review ({records.length})</span>
+                <span style={{ fontSize: '11px', color: '#b45309', marginLeft: '8px' }}>Missing Time Outs and review requests waiting for your decision.</span>
+            </div>
+
+            {records.map(r => (
+                <div key={r.id} style={{ padding: '14px 18px', borderTop: '1px solid #f5f5f5', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+                        <div style={{ fontSize: '12.5px', fontWeight: '600', color: '#111' }}>{r.user?.name ?? '-'}</div>
+                        <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                            {r.activity?.name ?? '-'} · {fmtDate(r.date)} · Time In {fmtTime(r.time_in)} · Time Out {fmtTime(r.time_out)}
+                        </div>
+                        <div style={{ fontSize: '11px', color: r.review_reason ? '#444' : '#b45309', marginTop: '4px' }}>
+                            {r.review_reason ? 'Volunteer\'s reason: ' + r.review_reason : 'Missing Time Out (closed automatically)'}
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                        <button type="button" onClick={() => open(r, 'approve')} style={{ ...btn, background: '#16a34a', border: 'none', color: 'white' }}>Approve</button>
+                        <button type="button" onClick={() => open(r, 'adjust')} style={btn}>Adjust</button>
+                        <button type="button" onClick={() => open(r, 'reject')} style={{ ...btn, color: '#CC0000' }}>Reject</button>
+                    </div>
+                </div>
+            ))}
+
+            {active && (
+                <div role="presentation" onClick={close} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', padding: '16px', zIndex: 3000 }}>
+                    <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '14px', width: '100%', maxWidth: '380px', padding: '22px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: '#111' }}>{titles[active.action]}</div>
+                        <div style={{ fontSize: '11.5px', color: '#888', margin: '4px 0 14px' }}>
+                            {active.record.user?.name} · {active.record.activity?.name}
+                        </div>
+
+                        {active.action === 'approve' && (
+                            <div style={{ fontSize: '12px', color: '#555', marginBottom: '12px', lineHeight: '1.6' }}>
+                                Time Out is set to the scheduled end of the activity, so hours are counted only until then.
+                            </div>
+                        )}
+
+                        {active.action === 'adjust' && (
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{ fontSize: '10.5px', fontWeight: '600', color: '#999', display: 'block', marginBottom: '6px' }}>NEW TIME OUT</label>
+                                <input type="time" value={adjTime} onChange={e => setAdjTime(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #ebebeb', borderRadius: '7px', fontSize: '12px' }} />
+                            </div>
+                        )}
+
+                        <label style={{ fontSize: '10.5px', fontWeight: '600', color: '#999', display: 'block', marginBottom: '6px' }}>
+                            ADMIN REMARK {active.action === 'approve' ? '(optional)' : '(required)'}
+                        </label>
+                        <textarea value={remark} onChange={e => setRemark(e.target.value)} rows={3} style={{ width: '100%', padding: '8px 10px', border: '1px solid #ebebeb', borderRadius: '7px', fontSize: '12px', fontFamily: 'inherit', resize: 'vertical' }} />
+
+                        {err && <div style={{ marginTop: '10px', fontSize: '11.5px', color: '#991b1b' }}>{err}</div>}
+
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                            <button type="button" onClick={close} style={{ ...btn, flex: 1, padding: '10px' }}>Cancel</button>
+                            <button type="button" onClick={submit} disabled={busy} style={{ ...btn, flex: 1, padding: '10px', background: '#CC0000', border: 'none', color: 'white' }}>
+                                {busy ? 'Saving...' : 'Confirm'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Late = timed in more than 15 minutes after the activity start (same rule as the running timer).
+function isLate(record) {
+    const start = record.activity?.start_time;
+    if (!record.time_in || record.status === 'absent') return false;
+    if (record.time_in_status) return record.time_in_status === 'late';
+    if (!start) return false;
+    const inDate = new Date(record.time_in);
+    const [h, m] = start.split(':').map(Number);
+    const scheduled = new Date(inDate);
+    scheduled.setHours(h, m, 0, 0);
+    return (inDate - scheduled) / 60000 > 15;
+}
+
+function TimeInBadge({ record }) {
+    if (!record.time_in || record.status === 'absent') return null;
+    const s = record.time_in_status || (isLate(record) ? 'late' : null);
+    if (!s) return null;
+    const palette = {
+        early:   { color: '#1d4ed8', background: '#eff6ff' },
+        on_time: { color: '#15803d', background: '#f0fdf4' },
+        late:    { color: '#CC0000', background: '#fef2f2' },
+    };
+    const p = palette[s] || { color: '#4b5563', background: '#f3f4f6' };
+    const label = s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return <span style={{ marginLeft: '6px', fontSize: '9.5px', fontWeight: '700', color: p.color, background: p.background, padding: '2px 6px', borderRadius: '8px' }}>{label}</span>;
+}
 function DashIcon() {
     return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
 }
