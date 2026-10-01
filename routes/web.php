@@ -12,7 +12,6 @@ use App\Http\Controllers\Volunteer\File201Controller;
 use App\Http\Controllers\Volunteer\NotificationController;
 use App\Http\Controllers\Admin\ProfileController as AdminProfileController;
 use App\Http\Controllers\WebAuthn\WebAuthnRegisterController;
-use App\Http\Controllers\WebAuthn\WebAuthnAttendanceController;
 use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\AttendanceController as AdminAttendanceController;
 use App\Http\Controllers\Admin\CommunicationController as AdminCommunicationController;
@@ -62,6 +61,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 
     // Attendance
     Route::get('/attendance', [AdminAttendanceController::class, 'index'])->name('attendance.index');
+    Route::post('/attendance/{attendance}/review', [\App\Http\Controllers\Admin\AttendanceReviewController::class, 'review'])->name('attendance.review');
     Route::get('/attendance/export-pdf', [AdminAttendanceController::class, 'exportPdf'])->name('attendance.export.pdf');
 
     // Communication
@@ -209,6 +209,7 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
     Route::patch('/profile/password', [VolunteerProfileController::class, 'updatePassword'])->name('profile.password');
 
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance');
+    Route::post('/attendance/{attendance}/request-review', [\App\Http\Controllers\Volunteer\AttendanceReviewController::class, 'store'])->name('attendance.request-review');
     Route::post('/attendance/time-in', [AttendanceController::class, 'timeIn'])->name('attendance.timein');
     Route::post('/attendance/time-out', [AttendanceController::class, 'timeOut'])->name('attendance.timeout');
 
@@ -253,10 +254,6 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
     // WebAuthn Fingerprint
     Route::post('/webauthn/register/options', [WebAuthnRegisterController::class, 'options'])->name('webauthn.register.options');
     Route::post('/webauthn/register', [WebAuthnRegisterController::class, 'register'])->name('webauthn.register');
-    Route::post('/webauthn/timein/options', [WebAuthnAttendanceController::class, 'options'])->name('webauthn.timein.options');
-    Route::post('/webauthn/timein', [WebAuthnAttendanceController::class, 'timeIn'])->name('webauthn.timein');
-    Route::post('/webauthn/timeout/options', [WebAuthnAttendanceController::class, 'options'])->name('webauthn.timeout.options');
-    Route::post('/webauthn/timeout', [WebAuthnAttendanceController::class, 'timeOut'])->name('webauthn.timeout');
 
 });
 
