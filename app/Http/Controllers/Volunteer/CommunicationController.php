@@ -20,7 +20,7 @@ class CommunicationController extends Controller
                 $q->where('sent_status', '!=', 'purged')
                   ->orWhere('inbox_status', '!=', 'purged');
             })
-            ->with('messages')
+            ->with('messages.admin:id,name')
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($thread) {
@@ -32,9 +32,9 @@ class CommunicationController extends Controller
                 return $thread;
             });
 
-        return Inertia::render('Volunteer/Communication', [
+        return Inertia::render(request()->boolean('classic') ? 'Volunteer/Communication' : 'Volunteer/Chat', [
             'sentEmails' => $sentEmails,
-            'announcements' => \App\Models\Announcement::latest()->take(10)->get(),
+            'announcements' => \App\Models\Announcement::whereNull('archived_at')->latest()->take(10)->get(), 'staff' => \App\Support\AdminStaff::all(), 'groupChat' => array_merge(\App\Support\ChatGroup::get(), \App\Support\ChatGroup::feed()),
         ]);
     }
 
@@ -43,24 +43,26 @@ class CommunicationController extends Controller
         $validated = $request->validate([
             'to' => 'required|email',
             'subject' => 'required|string|max:255',
-            'message' => 'required|string',
+            'message' => 'nullable|string|required_without:attachment', 'chat_key' => 'nullable|string|max:60',
+            'attachment' => \App\Support\ChatAttachment::rules(),
         ]);
 
         $thread = SentEmail::create([
             'user_id' => $request->user()->id,
-            ...$validated,
+            'chat_key' => collect(\App\Support\AdminStaff::all())->first(fn ($s) => strcasecmp($s, trim((string) ($validated['chat_key'] ?? ''))) === 0), ...collect($validated)->except(['attachment', 'chat_key'])->put('message', $validated['message'] ?? 'Sent an attachment')->all(),
         ]);
 
         $thread->messages()->create([
             'sender_type' => 'volunteer',
-            'body' => $validated['message'],
+            'body' => (string) ($validated['message'] ?? ''),
+            ...\App\Support\ChatAttachment::store($request->file('attachment')),
         ]);
 
         Mail::to($validated['to'])->send(
             new VolunteerMessageMail(
                 senderName: $request->user()->name,
                 subjectLine: $validated['subject'],
-                body: $validated['message'],
+                body: $validated['message'] ?? 'Sent an attachment',
             )
         );
 
@@ -72,25 +74,38 @@ class CommunicationController extends Controller
         abort_unless($email->user_id === $request->user()->id, 403);
 
         $validated = $request->validate([
-            'body' => 'required|string',
+            'body' => 'nullable|string|required_without:attachment',
+            'attachment' => \App\Support\ChatAttachment::rules(),
         ]);
 
         $email->messages()->create([
             'sender_type' => 'volunteer',
-            'body' => $validated['body'],
+            'body' => (string) ($validated['body'] ?? ''),
+            ...\App\Support\ChatAttachment::store($request->file('attachment')),
         ]);
 
-        $email->update(['sent_status' => 'active']);
+        $email->update(['sent_status' => 'active', 'admin_inbox_status' => 'active']);
 
-        Mail::to($email->to)->send(
-            new VolunteerMessageMail(
-                senderName: $request->user()->name,
-                subjectLine: 'Re: ' . $email->subject,
-                body: $validated['body'],
-            )
-        );
+        $mailTo = $email->to;
+        $mailName = $request->user()->name;
+        $mailSubject = 'Re: ' . $email->subject;
+        $mailBody = $validated['body'] ?? 'Sent an attachment';
+        dispatch(function () use ($mailTo, $mailName, $mailSubject, $mailBody) {
+            try {
+                \Illuminate\Support\Facades\Mail::to($mailTo)->send(new \App\Mail\VolunteerMessageMail(senderName: $mailName, subjectLine: $mailSubject, body: $mailBody));
+            } catch (\Throwable $e) {
+                \Log::warning('Volunteer reply mail failed: ' . $e->getMessage());
+            }
+        })->afterResponse();
 
         return back();
+    }
+
+    public function attachment(Request $request, \App\Models\CommunicationMessage $message)
+    {
+        abort_unless($message->thread && $message->thread->user_id === $request->user()->id, 403);
+
+        return \App\Support\ChatAttachment::response($message);
     }
 
     public function markRead(Request $request)

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Attendance;
 use App\Models\Document;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +15,9 @@ class DocumentReviewController extends Controller
      * List all volunteer compliance documents for admin review.
      * Access to this whole controller is already restricted to admins
      * by the 'role:admin' middleware on the admin route group.
+     *
+     * Also sends the attendance records that need an admin decision
+     * (missing Time Outs and review requests), shown at the top of the page.
      */
     public function index(Request $request)
     {
@@ -76,7 +80,8 @@ class DocumentReviewController extends Controller
             ->values();
 
         return Inertia::render('Admin/DocumentReview', [
-            'documents' => $rows,
+            'documents'         => $rows,
+            'volunteers' => \App\Models\User::role('volunteer')->whereRaw('LOWER(status) = ?', ['approved'])->select('id', 'name', 'badge_number')->orderBy('name')->get(),
         ]);
     }
 
@@ -225,7 +230,7 @@ class DocumentReviewController extends Controller
     }
 
     /**
-     * Admin can view/download any volunteer's document — no ownership check,
+     * Admin can view/download any volunteer's document - no ownership check,
      * since access to this whole controller is already gated to admins only.
      */
     public function view(Document $document)

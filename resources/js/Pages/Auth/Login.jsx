@@ -40,7 +40,7 @@ export default function Login({ status, canResetPassword }) {
 
                 body {
                     font-family: 'Source Sans 3', sans-serif;
-                    background: linear-gradient(135deg, #fff5f5 0%, #fee2e2 100%);
+                    background: #B92F2F;
                     background-attachment: fixed;
                     min-height: 100vh;
                 }
@@ -215,7 +215,7 @@ export default function Login({ status, canResetPassword }) {
                                 border: '1px solid #ffe2e2',
                             }}>
                                 <img
-                                    src="/images/red-cross-logo.png"
+                                    src="/images/finallogo.png"
                                     alt="Philippine Red Cross"
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                 />

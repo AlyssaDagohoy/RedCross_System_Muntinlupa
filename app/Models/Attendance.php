@@ -47,6 +47,16 @@ class Attendance extends Model
         'reviewed_at'         => 'datetime',
     ];
 
+    /**
+     * Hide attendance of deleted (soft deleted) volunteers everywhere.
+     * The rows stay in the database; they just don't show up in queries.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('activeVolunteer', function ($query) {
+            $query->whereHas('user');
+        });
+    }
     public function reviewer()
     {
         return $this->belongsTo(User::class, 'reviewed_by');

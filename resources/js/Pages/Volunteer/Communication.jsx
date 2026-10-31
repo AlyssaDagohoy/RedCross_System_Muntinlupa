@@ -1,9 +1,19 @@
-﻿import { useForm, router } from '@inertiajs/react';
+import { useForm, router } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 import VolunteerShell from '../../Components/VolunteerShell';
 
 const ADMIN_EMAIL = 'rizalmuntinlupa@redcross.org.ph';
 const ADMIN_NAME = 'PRC Admin';
+
+const lastActivity = (t) => {
+    const times = (Array.isArray(t.messages) ? t.messages : []).map((m) => new Date(m.created_at).getTime());
+    times.push(new Date(t.replied_at || t.created_at).getTime());
+    const valid = times.filter((n) => !Number.isNaN(n));
+    return valid.length ? Math.max(...valid) : 0;
+};
+const sameLocalDay = (ms) => new Date(ms).toDateString() === new Date().toDateString();
+// Today = had activity today, or still unread (so nothing important gets buried)
+const isTodayThread = (t) => sameLocalDay(lastActivity(t)) || !!t.unread;
 
 export default function VolunteerCommunication({ auth, sentEmails, announcements }) {
     const emails = sentEmails || [];
@@ -20,6 +30,32 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
     const [showAdminOnlyWarning, setShowAdminOnlyWarning] = useState(false);
     const [replyBody, setReplyBody] = useState('');
     const [sendingReply, setSendingReply] = useState(false);
+    const [annOpen, setAnnOpen] = useState(null); // announcement being read in the popup
+
+    useEffect(() => {
+        if (!annOpen) return;
+        const onKey = (e) => { if (e.key === 'Escape') setAnnOpen(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [annOpen]);
+
+    // live-poll: refresh messages every 5 seconds (only while this tab is visible)
+    useEffect(() => {
+        const tick = () => {
+            if (document.visibilityState !== 'visible') return;
+            router.reload({ only: ['sentEmails'], preserveScroll: true, preserveState: true });
+        };
+        const id = setInterval(tick, 5000);
+        return () => clearInterval(id);
+    }, []);
+
+    // keep the open thread in sync with fresh data
+    useEffect(() => {
+        setOpenEmail((cur) => {
+            if (!cur) return cur;
+            return (sentEmails || []).find((e) => e.id === cur.id) || cur;
+        });
+    }, [sentEmails]);
 
     const { data, setData, post, processing, reset, errors } = useForm({
         to: ADMIN_EMAIL,
@@ -45,12 +81,18 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
 
     // Inbox: emails with a reply from admin, whose inbox side is still active
     const inboxItems = useMemo(
-        () => emails.filter(e => e.reply && e.inbox_status === 'active'),
+        () => emails.filter(e => e.reply && e.inbox_status === 'active' && isTodayThread(e)),
         [emails]
     );
     const unreadCount = useMemo(
         () => inboxItems.filter(e => !e.read_at).length,
         [inboxItems]
+    );
+
+    // History: older inbox threads that are already read
+    const historyItems = useMemo(
+        () => emails.filter(e => e.reply && e.inbox_status === 'active' && !isTodayThread(e)),
+        [emails]
     );
 
     // Sent: emails whose sent side is still active
@@ -94,6 +136,7 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
         : view === 'archive' ? archivedRows
         : view === 'starred' ? starredRows
         : view === 'sent' ? sentItems.map(e => buildRow('sent', e))
+        : view === 'history' ? historyItems.map(e => buildRow('inbox', e))
         : inboxItems.map(e => buildRow('inbox', e));
 
     /* ---------- server actions ---------- */
@@ -249,6 +292,7 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
         { id: 'inbox', label: 'Inbox', icon: <InboxIcon />, count: unreadCount },
         { id: 'starred', label: 'Starred', icon: <StarIcon filled={false} />, count: starredRows.length },
         { id: 'sent', label: 'Sent', icon: <SentIcon />, count: 0 },
+        { id: 'history', label: 'History', icon: <HistoryIcon />, count: 0 },
         { id: 'archive', label: 'Archive', icon: <ArchiveIcon />, count: archivedRows.length },
         { id: 'trash', label: 'Trash', icon: <TrashIcon />, count: trashRows.length },
     ];
@@ -263,7 +307,6 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                 <div className="mc-head">
                     <div className="mc-top">
                         <div>
-                            <div className="mc-sub">Your direct line to the PRC Muntinlupa admin</div>
                         </div>
                         <button type="button" className="mc-compose" onClick={() => startCompose()}>
                             <PencilIcon /> <span className="mc-compose-label">Write a message</span>
@@ -317,7 +360,7 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                     <div className="mc-notice">
                         <span className="mc-notice-label">Announcements</span>
                         {announces.slice(0, 5).map((a, i) => (
-                            <span key={i} className="mc-chip">{a.title}</span>
+                            <button key={i} type="button" className="mc-chip" title="Read announcement" onClick={() => setAnnOpen(a)}>{a.title}</button>
                         ))}
                     </div>
                 )}
@@ -560,7 +603,7 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
 
                                         {threadMessages.map((m, i) => {
                                             const fromAdmin = m.sender_type === 'admin';
-                                            const fromName = fromAdmin ? ADMIN_NAME : myName;
+                                            const fromName = fromAdmin ? (m.admin?.name || ADMIN_NAME) : myName;
                                             const fromAddr = fromAdmin ? ADMIN_EMAIL : myEmail;
                                             const toName = fromAdmin ? myName : ADMIN_NAME;
                                             const toAddr = fromAdmin ? myEmail : ADMIN_EMAIL;
@@ -609,7 +652,6 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                         ) : (
                             /* ---------- NOTHING OPEN ---------- */
                             <div className="mc-none">
-                                <CrossMark size={64} color="#e4d4d4" />
                                 <div style={{ fontSize: '14px', fontWeight: '600', color: '#6b5555', marginTop: '12px' }}>Pick a message to read it here</div>
                                 <div style={{ fontSize: '12.5px', color: '#9a8585', marginTop: '4px' }}>Or write a new message to the admin.</div>
                             </div>
@@ -650,6 +692,44 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                 </div>
             )}
 
+            {annOpen && (
+                <div className="mc-modal-bg" onClick={() => setAnnOpen(null)}>
+                    <div className="mc-modal" role="dialog" aria-modal="true" aria-label={annOpen.title} onClick={(e) => e.stopPropagation()}>
+                        <div className="mc-modal-head">
+                            <span className="mc-modal-kicker">Announcement</span>
+                            <button type="button" className="mc-modal-x" aria-label="Close" onClick={() => setAnnOpen(null)}>&times;</button>
+                        </div>
+                        <div className="mc-modal-body">
+                            <h3 className="mc-modal-title">{annOpen.title}</h3>
+                            <div className="mc-modal-date">
+                                {annOpen.created_at ? new Date(annOpen.created_at).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : ''}
+                            </div>
+                            <div className="mc-modal-text">{annOpen.body}</div>
+                        </div>
+                        <div className="mc-modal-foot">
+                            <button type="button" className="mc-modal-close" onClick={() => setAnnOpen(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <style>{`
+                .mc-chip{font:inherit;font-size:12px;cursor:pointer}
+                .mc-chip:hover{border-color:#CC0000;color:#CC0000}
+                .mc-chip:focus-visible{outline:2px solid #CC0000;outline-offset:2px}
+                .mc-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px}
+                .mc-modal{background:#fff;border-radius:14px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden}
+                .mc-modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #f0f0f0}
+                .mc-modal-kicker{font-size:11px;font-weight:700;color:#CC0000;letter-spacing:.6px;text-transform:uppercase}
+                .mc-modal-x{background:none;border:none;font-size:22px;line-height:1;color:#999;cursor:pointer}
+                .mc-modal-body{padding:18px;overflow-y:auto}
+                .mc-modal-title{margin:0 0 4px;font-family:Georgia,'Times New Roman',serif;font-size:20px;line-height:1.25;color:#231a1a}
+                .mc-modal-date{font-size:12px;color:#9a8585;margin-bottom:14px}
+                .mc-modal-text{font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.7;color:#231a1a;white-space:pre-wrap;word-break:break-word}
+                .mc-modal-foot{padding:12px 18px;border-top:1px solid #f0f0f0;text-align:right}
+                .mc-modal-close{background:#fff;color:#555;border:1px solid #d9d9d9;border-radius:6px;padding:8px 18px;font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+            `}</style>
+
             <style>{`
                 .mc-shell{background:#fff;border:1px solid #e6d9d9;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:620px}
 
@@ -679,6 +759,35 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                 .mc-bar{display:flex;align-items:center;gap:8px;height:46px;padding:0 14px;border-bottom:1px solid #f0e6e6;flex-shrink:0}
                 .mc-link{margin-left:auto;background:none;border:none;cursor:pointer;font:inherit;font-size:12px;font-weight:700;color:#CC0000}
                 .mc-hint{padding:8px 14px;font-size:11.5px;color:#8a7474;background:#fbf7f7;border-bottom:1px solid #f0e6e6}
+/* mc-clean-white */
+@media (min-width: 901px) {
+.mc-shell{position:relative;background:#fff;border:1px solid #e4e4e7;border-radius:12px;height:calc(100vh - 100px);min-height:420px}
+.mc-shell .mc-head{background:#fff;border-bottom:1px solid #e4e4e7;padding:0 20px}
+.mc-shell .mc-top{display:block;height:0;min-height:0;margin:0;padding:0;gap:0}
+.mc-shell .mc-top > div{display:none}
+.mc-shell .mc-compose{position:absolute;right:20px;bottom:20px;left:auto;top:auto;margin:0;z-index:20;border-radius:999px;padding:11px 20px;box-shadow:none}
+.mc-shell .mc-tabs{margin-top:0;gap:8px}
+.mc-shell .mc-tab{padding:14px 8px}
+.mc-shell .mc-count{background:#f1f1f3;color:#666}
+.mc-shell .mc-tab.on .mc-count{background:#CC0000;color:#fff}
+.mc-shell .mc-list-col{background:#fff;border-right:1px solid #ececef}
+.mc-shell .mc-bar{height:48px;padding:0 16px;border-bottom:1px solid #ececef}
+.mc-shell .mc-hint{background:#fafafa;border-bottom:1px solid #ececef}
+.mc-shell .mc-rows{padding-bottom:72px}
+.mc-shell .mc-empty{padding:64px 28px;color:#8b8b92}
+.mc-shell .mc-row{padding:14px 16px;border-bottom:1px solid #f1f1f3}
+.mc-shell .mc-row.unread{background:#fff}
+.mc-shell .mc-row.read{background:#fff}
+.mc-shell .mc-row:hover{background:#fafafa}
+.mc-shell .mc-row.sel,.mc-shell .mc-row.on{background:#fdf2f2}
+.mc-shell .mc-from,.mc-shell .mc-subj{color:#18181b}
+.mc-shell .mc-prev{color:#71717a}
+.mc-shell .mc-tc,.mc-shell .mc-date{color:#a1a1aa}
+.mc-shell .mc-pane{background:#fafafa}
+.mc-shell .mc-ptool{border-bottom:1px solid #ececef}
+.mc-shell .mc-desk{padding:28px 24px 96px}
+.mc-shell .mc-paper{box-shadow:none;border:1px solid #ececef;border-radius:10px}
+}
                 .mc-rows{flex:1;overflow-y:auto}
                 .mc-empty{padding:56px 24px;text-align:center;font-size:13px;line-height:1.6;color:#9a8585}
 
@@ -760,7 +869,7 @@ export default function VolunteerCommunication({ auth, sentEmails, announcements
                 @media (max-width:600px){
                     .mc-tabs{display:none}
                     .mc-fdrop{display:block;position:relative;margin:10px 0 12px;width:fit-content;max-width:100%}
-                    .mc-fdrop-btn{width:auto;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #CC0000;border-radius:10px;padding:11px 14px;font:inherit;font-size:13px;color:#231a1a;cursor:pointer}
+                    .mc-fdrop-btn{width:auto;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;padding:11px 14px;font:inherit;font-size:13px;color:#231a1a;cursor:pointer}
                     .mc-fdrop-cur{display:flex;align-items:center;gap:8px}
                     .mc-fdrop-list{position:absolute;left:0;min-width:180px;top:calc(100% + 6px);z-index:30;background:#fff;border:1px solid #e6d9d9;border-radius:10px;overflow:hidden;box-shadow:0 8px 20px rgba(60,20,20,.12)}
                     .mc-fdrop-item{width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fff;border:none;border-top:1px solid #f0e6e6;font:inherit;font-size:13px;color:#231a1a;text-align:left;cursor:pointer}
@@ -856,6 +965,12 @@ function StarIcon({ filled }) {
         </svg>
     );
 }
+function HistoryIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+    );
+}
+
 function ArchiveIcon() {
     return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>;
 }

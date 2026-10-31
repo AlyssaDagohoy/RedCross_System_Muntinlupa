@@ -674,7 +674,7 @@ export default function VolunteerFile201({ approvedFiles, documentRequests, fold
     const subheading = { fontSize: '13px', fontWeight: '700', color: '#111' };
 
     const emptyState = (text) => (
-        <div style={{ ...cardStyle, padding: '40px 20px', textAlign: 'center' }}>
+        <div style={{ ...cardStyle, border: 'none', background: 'transparent', padding: '28px 20px', textAlign: 'center' }}>
             <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <FileIcon color="#ccc" size={20} />
             </div>
@@ -687,6 +687,10 @@ export default function VolunteerFile201({ approvedFiles, documentRequests, fold
 
             <style>{`
                 .f201-row:hover { background: #fafafa; }
+                .f201-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 0 24px; align-items: start; }
+                .f201-left, .f201-right { min-width: 0; }
+                .f201-right > :first-child { margin-top: 0px !important; }
+                @media (max-width: 1000px) { .f201-cols { display: block; } .f201-right > :first-child { margin-top: 20px !important; } }
                 .f201-name-link:hover { text-decoration: underline !important; }
                 .f201-icon-btn:hover { background: #f2f2f2 !important; }
                 .f201-folder:hover { border-color: #d5d5d5 !important; }
@@ -699,15 +703,17 @@ export default function VolunteerFile201({ approvedFiles, documentRequests, fold
 
             {uploadSuccessMsg && (                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', fontWeight: 600, marginBottom: '14px' }}>                     {uploadSuccessMsg}                 </div>             )}
             {/* Header */}
-            <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontSize: '14px', fontWeight: '700', color: '#111' }}>201 File</div>
-                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>Your approved files, folders, and document requests - all in one place.</div>
-            </div>
 
             {/* ============================================================ */}
             {/* DOCUMENT REQUESTS (from admin)                                 */}
             {/* ============================================================ */}
-            <div style={{ ...subheading, margin: '28px 0 10px' }}>Document Requests</div>
+            <div className="f201-cols">
+            <div className="f201-left">
+            <div data-f201-card="1" style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', marginBottom: '20px' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Document Requests</span>
+                </div>
+                <div style={{ padding: '16px 18px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {activeRequests.length === 0 ? emptyState('No document requests from the admin yet.') : activeRequests.map(req => {
                     const uploads = req.uploads || [];
@@ -771,6 +777,9 @@ export default function VolunteerFile201({ approvedFiles, documentRequests, fold
                 })}
             </div>
 
+            </div>
+            </div>
+
             {/* ============================================================ */}
             {/* 1. APPROVED / REJECTED (tabbed)                               */}
             {/* ============================================================ */}
@@ -805,9 +814,11 @@ export default function VolunteerFile201({ approvedFiles, documentRequests, fold
                 </div>
             )}
 
-            <div id="approved-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', margin: '28px 0 12px' }}>
-                <span style={subheading}>Approved Files &amp; Folders</span>
-            </div>
+            <div id="approved-section" data-f201-card="1" style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Approved Files &amp; Folders</span>
+                </div>
+                <div style={{ padding: '16px 18px' }}>
 
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
                 <StatusTabButton active={statusTab === 'pending'} onClick={() => setStatusTab('pending')} label="Pending" count={pendingUploads.length} activeColor="#b45309" />
@@ -1022,9 +1033,14 @@ export default function VolunteerFile201({ approvedFiles, documentRequests, fold
                 </div>
             )}
 
+            </div>
+            </div>
+            </div>
+            <div className="f201-right">
             <>
                     {/* My Folders */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', margin: '24px 0 10px' }}>
+                    <div data-f201-card="1" style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb' }}>
+                    <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
                             {(openFolder || archiveOpen) && (
                                 <button
@@ -1061,11 +1077,18 @@ export default function VolunteerFile201({ approvedFiles, documentRequests, fold
                         </div>
                         <div data-folder-actions="1" style={{ display: 'flex', gap: '8px' }}>
                             <button type="button" onClick={() => setShowNewFolder(s => !s)} style={{
-                                background: 'white', color: '#CC0000', border: '1px solid #f5c6c6', borderRadius: '8px',
+                                background: showNewFolder ? '#CC0000' : 'white', color: showNewFolder ? 'white' : '#333', border: showNewFolder ? '1px solid #CC0000' : '1px solid #e0e0e0', borderRadius: '8px',
                                 padding: '6px 12px', fontSize: '10.5px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit',
                             }}>+ New {openFolder ? 'Subfolder' : 'Folder'}</button>
                         </div>
                     </div>
+                    <div style={{ padding: '16px 18px' }}>
+                    {!openFolder && !archiveOpen && (
+                        <div data-f201-note="1" style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', fontSize: '11px', color: '#888', lineHeight: 1.4, marginBottom: '12px' }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '1px' }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            <span>Note: Only copies can be deleted. Original files can't be deleted.</span>
+                        </div>
+                    )}
 
                     {openFolder && folderFiles.length > 0 && (
                         <div data-orig-note="1" style={{ fontSize: '11px', color: '#999', margin: '-4px 2px 10px', lineHeight: 1.4 }}>
@@ -1373,7 +1396,11 @@ export default function VolunteerFile201({ approvedFiles, documentRequests, fold
                             )}
                         </div>
                     )}
+            </div>
+            </div>
             </>
+            </div>
+            </div>
 
             {/* Upload modal for a Document Request -- up to 10 files, no category */}
             {activeRequest && (

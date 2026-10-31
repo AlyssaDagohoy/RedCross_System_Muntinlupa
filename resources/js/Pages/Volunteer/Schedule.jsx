@@ -1,4 +1,4 @@
-﻿import { Link, router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import VolunteerShell, { useVolunteerShell } from '../../Components/VolunteerShell';
 import { AttendanceCapture } from '../../Components/FaceAttendance';
@@ -118,7 +118,7 @@ export default function VolunteerSchedule({ auth, activities }) {
                     <div style={{ position: 'relative', display: 'inline-block' }}>
                         <button type="button" aria-expanded={dropOpen} onClick={() => setDropOpen(o => !o)} style={{
                             display: 'inline-flex', alignItems: 'center', gap: '10px',
-                            padding: '12px 14px', background: 'white', border: '1.5px solid #CC0000', borderRadius: '10px',
+                            padding: '12px 14px', background: 'white', border: dropOpen ? '1.5px solid #CC0000' : '1.5px solid #e0e0e0', borderRadius: '10px',
                             cursor: 'pointer', fontFamily: 'inherit', fontSize: '12.5px', color: '#111',
                         }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -157,7 +157,7 @@ export default function VolunteerSchedule({ auth, activities }) {
                     <span style={{
                         position: 'absolute', top: '3px', bottom: '3px',
                         left: indicator.left, width: indicator.width,
-                        background: 'white', borderRadius: '8px',
+                        background: '#CC0000', borderRadius: '8px',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                         transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
                     }} />
@@ -182,17 +182,17 @@ export default function VolunteerSchedule({ auth, activities }) {
                                     <span style={{
                                         width: '5px', height: '5px', borderRadius: '50%',
                                         background: f.dot, flexShrink: 0,
-                                        opacity: active ? 1 : 0.55,
+                                        opacity: active ? 1 : 0.55, boxShadow: active ? '0 0 0 1.5px white' : 'none',
                                     }} />
                                 )}
                                 <span style={{
                                     fontSize: '11.5px', fontWeight: active ? '600' : '500',
-                                    color: active ? '#111' : '#888',
+                                    color: active ? 'white' : '#888',
                                     transition: 'color 0.15s',
                                 }}>{f.label}</span>
                                 <span style={{
                                     fontSize: '10px', fontWeight: '600',
-                                    color: active ? '#aaa' : '#bbb',
+                                    color: active ? 'rgba(255,255,255,0.8)' : '#bbb',
                                 }}>{count}</span>
                             </button>
                         );
@@ -210,13 +210,13 @@ export default function VolunteerSchedule({ auth, activities }) {
                         style={{
                             display: 'flex', alignItems: 'center', gap: '5px',
                             padding: '6px 11px', border: 'none', borderRadius: '7px',
-                            background: viewMode === 'row' ? 'white' : 'transparent',
+                            background: viewMode === 'row' ? '#CC0000' : 'transparent',
                             boxShadow: viewMode === 'row' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
                             cursor: 'pointer', fontFamily: 'inherit',
                         }}
                     >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={viewMode === 'row' ? '#CC0000' : '#999'} strokeWidth="2" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
-                        <span style={{ fontSize: '11px', fontWeight: '600', color: viewMode === 'row' ? '#111' : '#888' }}>Row</span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={viewMode === 'row' ? 'white' : '#999'} strokeWidth="2" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: viewMode === 'row' ? 'white' : '#888' }}>Row</span>
                     </button>
                     <button
                         type="button"
@@ -225,13 +225,13 @@ export default function VolunteerSchedule({ auth, activities }) {
                         style={{
                             display: 'flex', alignItems: 'center', gap: '5px',
                             padding: '6px 11px', border: 'none', borderRadius: '7px',
-                            background: viewMode === 'card' ? 'white' : 'transparent',
+                            background: viewMode === 'card' ? '#CC0000' : 'transparent',
                             boxShadow: viewMode === 'card' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
                             cursor: 'pointer', fontFamily: 'inherit',
                         }}
                     >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={viewMode === 'card' ? '#CC0000' : '#999'} strokeWidth="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
-                        <span style={{ fontSize: '11px', fontWeight: '600', color: viewMode === 'card' ? '#111' : '#888' }}>Card</span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={viewMode === 'card' ? 'white' : '#999'} strokeWidth="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: viewMode === 'card' ? 'white' : '#888' }}>Card</span>
                     </button>
                 </div>
                 )}
@@ -480,8 +480,7 @@ function ScheduleDetails({ act, bucket, compact }) {
         ...(compact ? [] : [{ icon: <CalendarIcon />, label: 'Date', value: fmtDate }]),
         ...(compact ? [] : [{ icon: <ClockIcon />, label: 'Time', value: time }]),
         ...(compact ? [] : [{ icon: <PinIcon />, label: 'Location', value: act.location_name }]),
-        { icon: <ClipboardIcon />, label: 'Assignment', value: act.assignment || 'No assignment specified.' },
-        { icon: <TextIcon />, label: 'Description', value: act.description || 'No description provided.' },
+        { icon: <ClipboardIcon />, label: 'Assignment', value: act.description || act.assignment || 'No assignment specified.' },
         { icon: <UserIcon />, label: 'Assigned By', value: act.assigned_by || 'Philippine Red Cross Admin' },
     ];
 

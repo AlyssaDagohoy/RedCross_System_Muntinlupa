@@ -1,5 +1,6 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
+import WelcomeBack from './WelcomeBack';
 
 const href = (name, fallback) => {
     try { return typeof route === 'function' ? route(name) : fallback; } catch (e) { return fallback; }
@@ -39,6 +40,7 @@ export default function IntroSplash({ authed = false }) {
     useEffect(() => {
         if (authed) return undefined;
         let off = null;
+        try { sessionStorage.setItem('rc_welcome', '1'); } catch (err) {}
         try {
             off = router.on('navigate', (e) => {
                 const p = e && e.detail && e.detail.page;
@@ -153,7 +155,7 @@ export default function IntroSplash({ authed = false }) {
 
     const onKey = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); proceed(); } };
 
-    if (!show) return null;
+    if (!show) return <WelcomeBack />;
 
     const pos = fly ? (fly.end && fly.to ? fly.to : fly.from) : null;
     const imgSize = fly && fly.end ? 'calc((100% - 2px) * ' + fly.k + ')' : undefined;
@@ -164,7 +166,7 @@ export default function IntroSplash({ authed = false }) {
                 .rc-intro{position:fixed;inset:0;z-index:9999;overflow:hidden;font-family:'Montserrat','Open Sans',sans-serif}
                 .rc-go{pointer-events:none}
                 .rc-lay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
-                .rc-red{background:#b91c1c;color:#fff;z-index:2;cursor:pointer;outline:none;transition:opacity .7s ease .15s}
+                .rc-red{background:#b92f2f;color:#fff;z-index:2;cursor:pointer;outline:none;transition:opacity .7s ease .15s}
                 .rc-go .rc-red{opacity:0;cursor:default}
                 .rc-wrap{position:relative;width:120px;height:120px;margin-bottom:30px}
                 .rc-drop{position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:#fff;opacity:0;animation:rcDrop .7s cubic-bezier(.5,0,1,.5) .2s forwards}
@@ -201,17 +203,17 @@ export default function IntroSplash({ authed = false }) {
                 <div className="rc-wrap" ref={wrapRef}>
                     <span className="rc-drop" />
                     <span className="rc-rp" /><span className="rc-rp" /><span className="rc-rp" />
-                    <div className="rc-logo"><img src="/images/red-cross-logo.png" alt="Philippine Red Cross" /></div>
+                    <div className="rc-logo"><img src="/images/finallogo.png" alt="Philippine Red Cross" /></div>
                 </div>
                 <div className="rc-text">Thank you for<br />choosing to serve!</div>
                 <div className="rc-tap">Tap to continue</div>
             </div>
             {fly && pos && (
                 <div className={'rc-fly' + (fly.end ? ' rc-end' : '') + (soft ? ' rc-soft' : '')} style={{ left: pos.left, top: pos.top, width: pos.size, height: pos.size }}>
-                    <img src="/images/red-cross-logo.png" alt="" style={imgSize ? { width: imgSize, height: imgSize } : undefined} />
+                    <img src="/images/finallogo.png" alt="" style={imgSize ? { width: imgSize, height: imgSize } : undefined} />
                 </div>
             )}
-            {bye && (<div style={{ position: "absolute", inset: 0, zIndex: 8, background: "#b91c1c", color: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24, gap: 16 }}><svg width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="45" fill="#16a34a" stroke="#fff" strokeWidth="4" /><path d="M28 49l14 14 27-30" fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" /></svg><div style={{ fontSize: 22, fontWeight: 600 }}>You can now close this page.</div><div style={{ fontSize: 16, opacity: 0.9 }}>Thank you for your service!</div></div>)}
+            {bye && (<div style={{ position: "absolute", inset: 0, zIndex: 8, background: "#b92f2f", color: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24, gap: 16 }}><svg width="96" height="96" viewBox="0 0 96 96"><circle cx="48" cy="48" r="45" fill="#16a34a" stroke="#fff" strokeWidth="4" /><path d="M28 49l14 14 27-30" fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" /></svg><div style={{ fontSize: 22, fontWeight: 600 }}>You can now close this page.</div><div style={{ fontSize: 16, opacity: 0.9 }}>Thank you for your service!</div></div>)}
             {dlg && (
                 <div className="rc-dlg" role="dialog" aria-modal="true" aria-label="Leave this page?">
                     <div className="rc-dg">

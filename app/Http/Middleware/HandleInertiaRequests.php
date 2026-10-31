@@ -34,6 +34,10 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user()?->load('roles'),
             ],
+            'adminProfile' => fn () => ($request->user() && $request->user()->hasAnyRole(['admin', 'Admin'])) ? session('admin_profile') : null,
+            'staffList' => fn () => \App\Support\AdminStaff::all(),
+            'profilePinned' => fn () => \Illuminate\Support\Facades\Schema::hasTable('admin_profile_pins') ? \Illuminate\Support\Facades\DB::table('admin_profile_pins')->pluck('name')->all() : [],
+            'staffPhotos' => fn () => \Illuminate\Support\Facades\Schema::hasTable('admin_profile_details') ? \Illuminate\Support\Facades\DB::table('admin_profile_details')->whereNotNull('photo')->pluck('photo', 'name')->all() : [],
             'flash' => [
                 'success' => session('success'),
                 'error' => session('error'),
@@ -41,6 +45,28 @@ class HandleInertiaRequests extends Middleware
             'volunteerSetup' => fn () => [
                 'profile_completed' => $request->user()?->isProfileComplete() ?? false,
             ],
+            'volunteerNotifications' => fn () => ($request->user() && $request->user()->hasRole('volunteer')) ? [
+                'items' => \App\Models\Notification::where('user_id', $request->user()->id)
+                    ->latest()
+                    ->take(8)
+                    ->get()
+                    ->map(fn ($n) => [
+                        'id'           => $n->id,
+                        'category'     => $n->category,
+                        'title'        => $n->title,
+                        'message'      => $n->message,
+                        'body'         => $n->message,
+                        'action_label' => $n->action_label,
+                        'action_url'   => $n->action_url,
+                        'read'         => (bool) $n->read,
+                        'created_at'   => $n->created_at,
+                        'time'         => $n->created_at?->diffForHumans(),
+                    ])
+                    ->values(),
+                'unread' => \App\Models\Notification::where('user_id', $request->user()->id)
+                    ->where('read', false)
+                    ->count(),
+            ] : null,
         ];
     }
 }

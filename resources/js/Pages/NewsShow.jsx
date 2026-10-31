@@ -54,8 +54,7 @@ export default function NewsShow({ auth, article }) {
                             color: '#DC2626', fontSize: '20px', fontWeight: '900',
                         }}>+</div>
                         <div>
-                            <strong style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: 'white', fontFamily: 'Oswald, sans-serif', letterSpacing: '0.6px' }}>RIZAL CHAPTER</strong>
-                            <span style={{ display: 'block', fontSize: '10.5px', color: 'rgba(255,255,255,0.72)', fontWeight: '300' }}>Muntinlupa City Branch</span>
+                            <strong style={{ display: 'block', fontSize: '16px', fontWeight: '700', color: 'white', fontFamily: 'Oswald, sans-serif', letterSpacing: '0.6px' }}>Scan<span style={{ color: '#fecaca' }}>2</span>Serve</strong>
                         </div>
                     </Link>
                     <Link href="/" style={{

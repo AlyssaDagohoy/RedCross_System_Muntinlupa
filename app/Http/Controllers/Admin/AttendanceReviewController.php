@@ -66,9 +66,11 @@ class AttendanceReviewController extends Controller
             return back()->withErrors(['review' => 'The activity has no end time. Use Adjust to enter a Time Out.']);
         }
 
-        // Hours are counted only up to the scheduled end.
+        // Hours are counted only between the scheduled start and end.
+        $start   = $activity ? $activity->startsAt() : null;
+        $from    = ($start && $in->lt($start)) ? $start : $in;
         $counted = ($end && $timeOut->gt($end)) ? $end : $timeOut;
-        $hours   = round(max(0, $in->diffInMinutes($counted, false)) / 60, 2);
+        $hours   = round(max(0, $from->diffInMinutes($counted, false)) / 60, 2);
 
         $fields['status']         = 'present';
         $fields['time_out']       = $timeOut;
@@ -79,4 +81,62 @@ class AttendanceReviewController extends Controller
 
         return back()->with('message', 'Attendance updated.');
     }
-}
+
+    /**
+     * Admin correction for any record: present, absent or excused.
+     * Always requires a remark. Marked as a manual entry.
+     */
+    public function correct(Request $request, Attendance $attendance)
+    {
+        $data = $request->validate([
+            'status'   => 'required|in:present,absent,excused',
+            'time_in'  => 'nullable|required_if:status,present|date_format:H:i',
+            'time_out' => 'nullable|required_if:status,present|date_format:H:i',
+            'remark'   => 'required|string|max:1000',
+        ]);
+
+        $fields = [
+            'status'            => $data['status'],
+            'admin_remark'      => $data['remark'],
+            'reviewed_by'       => auth()->id(),
+            'reviewed_at'       => now(),
+            'attendance_method' => 'manual',
+        ];
+
+        if ($data['status'] !== 'present') {
+            $fields['time_in']        = null;
+            $fields['time_out']       = null;
+            $fields['hours_rendered'] = null;
+            $fields['left_early']     = false;
+            $fields['time_in_status'] = null;
+
+            $attendance->update($fields);
+
+            return back()->with('message', 'Attendance updated.');
+        }
+
+        $day = $attendance->date->toDateString();
+        $in  = \Carbon\Carbon::parse($day . ' ' . $data['time_in']);
+        $out = \Carbon\Carbon::parse($day . ' ' . $data['time_out']);
+
+        if ($out->lte($in)) {
+            $out->addDay();
+        }
+
+        $activity = $attendance->activity;
+        $end      = $activity ? $activity->endsAt() : null;
+
+        $fields['time_in']        = $in;
+        $fields['time_out']       = $out;
+        // Hours are counted only between the scheduled start and end (same rule as the scanner).
+        $start   = $activity ? $activity->startsAt() : null;
+        $from    = ($start && $in->lt($start)) ? $start : $in;
+        $counted = ($end && $out->gt($end)) ? $end : $out;
+        $fields['hours_rendered'] = round(max(0, $from->diffInMinutes($counted, false)) / 60, 2);
+        $fields['left_early']     = $end ? $out->lt($end) : false;
+        $fields['time_in_status'] = $activity ? $activity->timeInStatusAt($in) : null;
+
+        $attendance->update($fields);
+
+        return back()->with('message', 'Attendance updated.');
+    }}

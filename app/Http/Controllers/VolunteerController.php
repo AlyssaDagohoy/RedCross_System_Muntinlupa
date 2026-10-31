@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Mail\VolunteerApproved;
 use App\Mail\VolunteerRejected;
+use App\Mail\VolunteerRemoved;
 use App\Models\User;
 use App\Models\DocumentRequest;
 use App\Models\Notification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 
@@ -16,10 +18,48 @@ class VolunteerController extends Controller
     // Show all volunteers (for admin)
     public function index()
     {
+        $requiredTypes = ['nbi', 'medical', 'training', 'barangay'];
+
         $volunteers = User::role('volunteer')
-            ->select('id', 'name', 'email', 'status', 'created_at')
+            ->select('id', 'badge_number', 'name', 'email', 'status', 'created_at')
             ->orderBy('created_at', 'desc')
             ->get();
+
+        // How many of the required document types each volunteer has submitted
+        $docCounts = DB::table('documents')
+            ->select('user_id', DB::raw('COUNT(DISTINCT type) as total'))
+            ->whereIn('type', $requiredTypes)
+            ->groupBy('user_id')
+            ->pluck('total', 'user_id');
+
+        // Total rendered hours per volunteer
+        $hours = DB::table('attendances')
+            ->select('user_id', DB::raw('SUM(hours_rendered) as total'))
+            ->groupBy('user_id')
+            ->pluck('total', 'user_id');
+
+        // Every submitted document per volunteer (superseded ones skipped) so the admin can check them before approving
+        $docsByUser = \App\Models\Document::with('documentRequest:id,document_name')
+            ->whereIn('user_id', $volunteers->pluck('id'))
+            ->where('status', '!=', 'superseded')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->groupBy('user_id');
+
+        $volunteers->each(function ($v) use ($docCounts, $hours, $requiredTypes, $docsByUser) {
+            $v->submitted_docs = ($docsByUser[$v->id] ?? collect())->map(fn ($d) => [
+                'id'            => $d->id,
+                'type'          => $d->type,
+                'label'         => $d->documentRequest->document_name ?? null,
+                'original_name' => $d->original_name,
+                'status'        => $d->status,
+                'admin_remarks' => $d->admin_remarks,
+                'is_requested'  => (bool) $d->document_request_id,
+            ])->values();
+            $v->documents_submitted = (int) ($docCounts[$v->id] ?? 0);
+            $v->documents_required  = count($requiredTypes);
+            $v->total_hours         = round((float) ($hours[$v->id] ?? 0), 1);
+        });
 
         return Inertia::render('Admin/Volunteers', [
             'volunteers' => $volunteers,
@@ -31,6 +71,12 @@ class VolunteerController extends Controller
     {
         $user = User::findOrFail($id);
         $user->status = 'approved';
+
+        // Generate Volunteer ID once; keep the existing one on re-approval
+        if (empty($user->badge_number)) {
+            $user->badge_number = 'PRC-' . str_pad($user->id, 5, '0', STR_PAD_LEFT);
+        }
+
         $user->save();
 
         // Send approval email
@@ -40,7 +86,7 @@ class VolunteerController extends Controller
             \Log::error('Failed to send approval email: ' . $e->getMessage());
         }
 
-        return back()->with('success', 'Volunteer approved and notified via email.');
+        return back()->with('success', "Volunteer approved (ID: {$user->badge_number}) and notified via email.");
     }
 
     // Reject a volunteer
@@ -58,6 +104,29 @@ class VolunteerController extends Controller
         }
 
         return back()->with('success', 'Volunteer rejected and notified via email.');
+    }
+
+    // Remove a volunteer: email them, end their sessions, then soft delete the account
+    public function destroy($id)
+    {
+        $user = User::role('volunteer')->findOrFail($id);
+
+        $emailed = true;
+        try {
+            Mail::to($user->email)->send(new VolunteerRemoved($user));
+        } catch (\Exception $e) {
+            $emailed = false;
+            \Log::error('Failed to send removal email: ' . $e->getMessage());
+        }
+
+        // Log out anyone still signed in with this account
+        DB::table('sessions')->where('user_id', $user->id)->delete();
+
+        $user->delete();
+
+        return back()->with('success', $emailed
+            ? "{$user->name} was removed and notified via email."
+            : "{$user->name} was removed, but the email could not be sent.");
     }
 
     // Admin requests one or more documents from a volunteer, grouped as a batch

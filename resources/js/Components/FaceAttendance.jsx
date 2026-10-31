@@ -24,61 +24,107 @@ function getPunctuality(timeIn, startTime) {
     return 'late';
 }
 
-function RunningTimer({ record, activity }) {
-    const [now, setNow] = useState(new Date());
+const ringToMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+const ringFmt12 = (t) => {
+    const m = ringToMin(t);
+    if (m == null) return '\u2014';
+    const h = Math.floor(m / 60);
+    return `${((h + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+};
+
+// Round Time In / Time Out button with a progress ring (same look as the phone card).
+export function RingClockButton({ mode, isOngoing, record, activity, canProceed, onPress }) {
+    const [now, setNow] = useState(() => Date.now());
 
     useEffect(() => {
-        if (!record?.time_in || record?.time_out) return;
-        const interval = setInterval(() => setNow(new Date()), 1000);
-        return () => clearInterval(interval);
-    }, [record?.time_in, record?.time_out]);
+        if (!isOngoing || !record?.time_in || record?.time_out) return undefined;
+        setNow(Date.now());
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, [isOngoing, record?.time_in, record?.time_out]);
 
+    const pad = (n) => String(n).padStart(2, '0');
+    const startedAt = isOngoing && record?.time_in ? new Date(record.time_in).getTime() : NaN;
+    const elapsed = Number.isFinite(startedAt) ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
+    const clock = `${Math.floor(elapsed / 3600)}:${pad(Math.floor((elapsed % 3600) / 60))}:${pad(elapsed % 60)}`;
+    const eMin = ringToMin(activity?.end_time);
+    const inDate = Number.isFinite(startedAt) ? new Date(startedAt) : null;
+    const inMin = inDate ? inDate.getHours() * 60 + inDate.getMinutes() : null;
+    const planned = eMin != null && inMin != null && eMin > inMin ? (eMin - inMin) * 60 : 0;
+    const progress = isOngoing && planned ? Math.min(1, elapsed / planned) : 0;
+    const R = 74;
+    const C = 2 * Math.PI * R;
+    const ang = progress * 2 * Math.PI - Math.PI / 2;
+    const label = mode === 'checkin' ? 'Time In' : 'Time Out';
+    const sub = !canProceed ? 'Choose an activity' : (isOngoing ? 'Tap to end shift' : 'Tap to start');
+
+    return (
+        <button
+            type="button"
+            aria-label={label}
+            disabled={!canProceed}
+            onClick={onPress}
+            style={{ position: 'relative', display: 'block', margin: '0 auto 16px', width: '170px', height: '170px', padding: 0, border: 'none', background: 'none', cursor: canProceed ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}
+        >
+            <svg width="170" height="170" viewBox="0 0 170 170" aria-hidden="true">
+                <circle cx="85" cy="85" r="74" fill="none" stroke={canProceed ? '#f7c1c1' : '#e4e4e6'} strokeWidth="7" />
+                {progress > 0 && (
+                    <circle cx="85" cy="85" r="74" fill="none" stroke="#CC0000" strokeWidth="7" strokeLinecap="round"
+                        strokeDasharray={`${(progress * C).toFixed(1)} ${C.toFixed(1)}`} transform="rotate(-90 85 85)" />
+                )}
+                <circle cx="85" cy="85" r="62" fill={canProceed ? '#CC0000' : '#c9c9cc'} />
+                {progress > 0 && (
+                    <circle cx={(85 + R * Math.cos(ang)).toFixed(1)} cy={(85 + R * Math.sin(ang)).toFixed(1)} r="8" fill="white" stroke="#CC0000" strokeWidth="3" />
+                )}
+            </svg>
+            <span style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                <span style={{ fontSize: isOngoing ? '22px' : '20px', fontWeight: '600', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{isOngoing ? clock : label}</span>
+                <span style={{ fontSize: '11px', marginTop: '5px', color: canProceed ? '#ffd9d9' : '#f3f3f4' }}>{sub}</span>
+            </span>
+        </button>
+    );
+}
+
+// Details under the round button: Time in, Ends at, Status, location.
+export function RunningTimer({ record, activity }) {
     const punctuality = record?.time_in_status
         ? (record.time_in_status === 'on_time' ? 'ontime' : record.time_in_status)
         : getPunctuality(record?.time_in, activity?.start_time);
+    const timeInText = record?.time_in
+        ? new Date(record.time_in).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
+        : '\u2014';
+    const labelStyle = { fontSize: '11px', color: '#888' };
+    const valueStyle = { fontSize: '13px', fontWeight: '600', marginTop: '2px' };
 
     return (
-        <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px',
-            marginBottom: '16px', flexWrap: 'wrap',
-        }}>
-            <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-                    Time In
+        <div>
+            <div style={{ display: 'flex', maxWidth: '440px', margin: '0 auto', paddingTop: '14px', borderTop: '1px solid #f0f0f0', textAlign: 'center' }}>
+                <div style={{ flex: 1 }}>
+                    <div style={labelStyle}>Time in</div>
+                    <div style={{ ...valueStyle, color: '#16a34a' }}>{timeInText}</div>
                 </div>
-                <div style={{ fontSize: '18px', fontWeight: '700', color: '#16a34a' }}>
-                    {formatTime(record?.time_in)}
+                <div style={{ flex: 1, borderLeft: '1px solid #f0f0f0' }}>
+                    <div style={labelStyle}>Ends at</div>
+                    <div style={{ ...valueStyle, color: '#111' }}>{ringFmt12(activity?.end_time)}</div>
                 </div>
-            </div>
-
-            <div style={{ width: '1px', height: '34px', background: '#eee' }} />
-
-            <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-                    Now
-                </div>
-                <div style={{ fontSize: '18px', fontWeight: '700', color: '#111' }}>
-                    {formatTime(now)} <span style={{ fontSize: '10px', color: '#DC2626', fontWeight: '600' }}>(running)</span>
-                </div>
-            </div>
-
-            {punctuality && (
-                <>
-                    <div style={{ width: '1px', height: '34px', background: '#eee' }} />
-                    <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: '10px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-                            Status
-                        </div>
+                {punctuality && (
+                    <div style={{ flex: 1, borderLeft: '1px solid #f0f0f0' }}>
+                        <div style={labelStyle}>Status</div>
                         <div style={{
-                            fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '10px',
-                            display: 'inline-block',
+                            fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '10px', display: 'inline-block', marginTop: '2px',
                             background: punctuality === 'early' ? '#eff6ff' : punctuality === 'ontime' ? '#f0fdf4' : '#fef2f2',
                             color: punctuality === 'early' ? '#3B82F6' : punctuality === 'ontime' ? '#16a34a' : '#DC2626',
                         }}>
                             {punctuality === 'early' ? 'Early' : punctuality === 'ontime' ? 'On Time' : 'Late'}
                         </div>
                     </div>
-                </>
+                )}
+            </div>
+            {activity?.location_name && (
+                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: '#666' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                    {activity.location_name}
+                </div>
             )}
         </div>
     );
@@ -263,7 +309,6 @@ export default function FaceAttendance({ todayRecord, activities, availableActiv
     return (
         <>
             <div style={{ textAlign: 'center', padding: '20px 10px' }}>
-                {isOngoing && <RunningTimer record={todayRecord} activity={activeActivity} />}
 
                 {!isOngoing && (
                     <div style={{ marginBottom: '16px', maxWidth: '320px', marginLeft: 'auto', marginRight: 'auto' }}>
@@ -294,24 +339,25 @@ export default function FaceAttendance({ todayRecord, activities, availableActiv
                     </div>
                 )}
 
-                <div style={{ fontSize: '13px', color: '#666', marginBottom: '14px' }}>
-                    {isOngoing ? 'Ready to time out.' : `Ready to ${mode === 'checkin' ? 'time in' : 'time out'}.`}
-                </div>
-                <button
-                    onClick={() => {
+                {isOngoing && activeActivity && (
+                    <div data-rc-heading="1" style={{ marginBottom: '14px' }}>
+                        <div style={{ fontSize: '15px', fontWeight: '600', color: '#111' }}>{activeActivity.name}</div>
+                        <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
+                    </div>
+                )}
+                <RingClockButton
+                    mode={mode}
+                    isOngoing={!!isOngoing}
+                    record={todayRecord}
+                    activity={activeActivity}
+                    canProceed={canProceed}
+                    onPress={() => {
                         // remember what is being scanned, for the success popup
                         captureInfo.current = { mode, activityName: activeActivity?.name || 'the activity' };
                         setShowCapture(true);
                     }}
-                    disabled={!canProceed}
-                    style={{
-                        background: canProceed ? '#DC2626' : '#f0a8a8', color: 'white', border: 'none',
-                        padding: '12px 32px', borderRadius: '100px', fontSize: '13.5px', fontWeight: '600',
-                        cursor: canProceed ? 'pointer' : 'not-allowed', fontFamily: "'Source Sans 3', sans-serif",
-                    }}
-                >
-                    {mode === 'checkin' ? 'Time In' : 'Time Out'}
-                </button>
+                />
+                {isOngoing && <RunningTimer record={todayRecord} activity={activeActivity} />}
             </div>
 
             {showCapture && (

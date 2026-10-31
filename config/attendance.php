@@ -13,5 +13,5 @@ return [
     'time_out_early_window' => 60,
 
     // Time Out stays open this many minutes after the activity ends.
-    'time_out_grace' => 60,
+    'time_out_grace' => 15,
 ];

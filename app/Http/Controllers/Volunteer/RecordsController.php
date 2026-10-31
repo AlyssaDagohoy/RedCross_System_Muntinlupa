@@ -9,6 +9,15 @@ use Inertia\Inertia;
 
 class RecordsController extends Controller
 {
+    private function activityStatus($a): string
+    {
+        $act = $a->activity;
+        if (! $act) return "\u{2014}";
+        if ($act->status === 'cancelled') return 'cancelled';
+        if ($a->time_out) return 'completed';
+        if ($a->time_in) return 'ongoing';
+        return $act->status ?? 'upcoming';
+    }
     public function index()
     {
         $user = Auth::user();
@@ -21,7 +30,7 @@ class RecordsController extends Controller
         $attendances = Attendance::where('user_id', $user->id)
             ->with('activity:id,name,location_name,description,assigned_by,status')
             ->orderBy('date', 'desc')
-            ->get(['id', 'activity_id', 'date', 'time_in', 'time_out', 'hours_rendered', 'attendance_method', 'status'])
+            ->get(['id', 'activity_id', 'date', 'time_in', 'time_out', 'hours_rendered', 'attendance_method', 'status'])->filter(fn ($a) => $a->time_out || in_array($a->status, ['absent', 'cancelled', 'needs_review', 'rejected']))->values()
             ->map(function ($a) {
                 return [
                     'id'                => $a->id,
@@ -35,7 +44,7 @@ class RecordsController extends Controller
                     'location_name'     => $a->activity->location_name ?? '—',
                     'assignment'        => $a->activity->description ?? '—',
                     'assigned_by'       => $a->activity->assigned_by ?? '—',
-                    'activity_status'   => $a->activity->status ?? '—',
+                    'activity_status'   => $this->activityStatus($a),
                 ];
             });
 

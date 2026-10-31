@@ -56,7 +56,7 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
     };
 
     // Newest first: by date, then by time in so the record you just made is always on top.
-    const filtered = [...attendances]
+    const filtered = attendances.filter(r => !!r.time_out || ['absent', 'cancelled', 'needs_review', 'rejected'].includes(r.status))
         .sort((a, b) => {
             const byDate = new Date(b.date) - new Date(a.date);
             if (byDate !== 0) return byDate;
@@ -90,6 +90,21 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                 </div>
             )}
 
+            {/* Branch fingerprint */}
+            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '20px' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Branch Fingerprint</span>
+                </div>
+                <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 240px', fontSize: '12px', color: '#555', lineHeight: '1.6' }}>
+                        For activities held at the branch, scan your fingerprint on the branch device to time in and time out. Your attendance will appear in Recent Records below. Give your Biometric ID to the branch staff when you enroll your fingerprint.
+                    </div>
+                    <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '8px', padding: '10px 16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: '#bbb', letterSpacing: '0.5px' }}>YOUR BIOMETRIC ID</div>
+                        <div style={{ fontSize: '18px', fontWeight: '700', color: '#111', marginTop: '2px' }}>{auth.user.biometric_id ?? '-'}</div>
+                    </div>
+                </div>
+            </div>
             {/* Face Time In / Time Out */}
             <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '20px' }}>
                 <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -142,7 +157,7 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                                                     {s.label}
                                                 </span>
                                             </td>
-                                            <td style={{ color: '#16a34a' }}>{formatTime(record.time_in)}{isLate(record) && <span style={{ marginLeft: '6px', fontSize: '9.5px', fontWeight: '700', color: '#CC0000', background: '#fef2f2', padding: '2px 6px', borderRadius: '8px' }}>Late</span>}</td>
+                                            <td style={{ color: '#16a34a' }}>{formatTime(record.time_in)}</td>
                                             <td style={{ color: '#CC0000' }}>{formatTime(record.time_out)}</td>
                                         </tr>
                                     );
@@ -259,8 +274,8 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                                         )}
                                         {canRequest && !reviewOpen && (
                                             <button type="button" onClick={() => setReviewOpen(true)} style={{
-                                                width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #CC0000',
-                                                background: 'white', color: '#CC0000', fontSize: '12px', fontWeight: '600',
+                                                width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e0e0e0',
+                                                background: 'white', color: '#333', fontSize: '12px', fontWeight: '600',
                                                 cursor: 'pointer', fontFamily: 'inherit', marginBottom: '12px',
                                             }}>
                                                 Request Attendance Review
@@ -301,19 +316,6 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
 
         </VolunteerShell>
     );
-}
-
-// Late = timed in more than 15 minutes after the activity start (same rule as the running timer).
-function isLate(record) {
-    const start = record.activity?.start_time;
-    if (!record.time_in || record.status === 'absent') return false;
-    if (record.time_in_status) return record.time_in_status === 'late';
-    if (!start) return false;
-    const inDate = new Date(record.time_in);
-    const [h, m] = start.split(':').map(Number);
-    const scheduled = new Date(inDate);
-    scheduled.setHours(h, m, 0, 0);
-    return (inDate - scheduled) / 60000 > 15;
 }
 
 function ClockDotIcon() {

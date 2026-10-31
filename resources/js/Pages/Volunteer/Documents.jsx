@@ -99,8 +99,7 @@ export default function VolunteerDocuments({ auth, documents }) {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                             </div>
                             <div>
-                                <div style={{ fontSize: '11px', fontWeight: '600', color: 'white' }}>Red Cross</div>
-                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', marginTop: '1px' }}>Muntinlupa Branch</div>
+                                <div style={{ fontSize: '14px', fontWeight: '700', color: 'white' }}>Scan<span style={{ color: '#fecaca' }}>2</span>Serve</div>
                             </div>
                         </div>
                     </div>

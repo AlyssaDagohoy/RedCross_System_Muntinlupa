@@ -74,22 +74,6 @@ class FaceAttendanceController extends Controller
 
         $status = $activity->timeInStatusAt($now);
 
-        // Early: the volunteer must confirm first.
-        if ($status === 'early' && !$request->boolean('confirm_early')) {
-            return back()->withErrors([
-                'confirm_early' => 'You are ' . $this->humanDuration($now, $activity->startsAt()) . ' early. Are you sure you want to time in now?',
-            ]);
-        }
-
-        // Late: the volunteer must confirm first.
-        if ($status === 'late' && !$request->boolean('confirm_late')) {
-            $window = (int) config('attendance.time_in_on_time_window', 15);
-            return back()->withErrors([
-                'confirm_late' => "You were given a {$window}-minute window, but you're late. You are "
-                    . $this->humanDuration($now, $activity->startsAt()) . ' past the start time. Time in anyway?',
-            ]);
-        }
-
         if ($error = $this->faceError($user, $request->face_descriptor)) {
             return back()->withErrors(['face' => $error]);
         }
@@ -121,7 +105,7 @@ class FaceAttendanceController extends Controller
 
         // The attendance is already saved at this point, so a notification problem
         // must not turn a successful Time In into a 500 error.
-        $this->notifySafely($user, new AttendanceRecorded('time_in', $activity->name));
+        $this->notifyAttendance($user, 'time_in', $activity, $now, null, $status);
 
         return back()->with('message', match ($status) {
             'early' => 'Time in recorded (early).',
@@ -153,20 +137,6 @@ class FaceAttendanceController extends Controller
         }
 
         $status = $activity->timeOutStatusAt($now);
-
-        // Early: the volunteer must confirm first.
-        if ($status === 'early' && !$request->boolean('confirm_early')) {
-            return back()->withErrors([
-                'confirm_early' => 'Timing out too early. You are ' . $this->humanDuration($now, $activity->endsAt()) . ' before the end time. Are you sure you want to time out now?',
-            ]);
-        }
-
-        // Late: after the end time but still inside the grace window. The volunteer must confirm.
-        if ($status === 'late' && !$request->boolean('confirm_late')) {
-            return back()->withErrors([
-                'confirm_late' => 'Timing Out Late. Your exact time will be recorded, but hours are counted only up to the activity end time. Continue?',
-            ]);
-        }
 
         if ($error = $this->faceError($user, $request->face_descriptor)) {
             return back()->withErrors(['face' => $error]);
@@ -208,7 +178,7 @@ class FaceAttendanceController extends Controller
         ]);
 
         // Same protection as Time In: the record is saved, so don't fail the request.
-        $this->notifySafely($user, new AttendanceRecorded('time_out', $activity->name, $hours, $status === 'early'));
+        $this->notifyAttendance($user, 'time_out', $activity, $now, $hours, $status);
 
         return back()->with('message', match ($status) {
             'late'  => "Time out recorded (late). Hours rendered: {$hours}",
@@ -257,6 +227,42 @@ class FaceAttendanceController extends Controller
         }
     }
 
+    /** Bell notification for Time In / Time Out. Never breaks the request. */
+    private function notifyAttendance($user, string $type, $activity, Carbon $when, $hours = null, $status = null): void
+    {
+        try {
+            $time = $when->format('g:i A');
+
+            if ($type === 'time_in') {
+                $label   = match ($status) { 'early' => ' (early)', 'late' => ' (late)', default => '' };
+                $title   = 'Timed in: ' . $activity->name;
+                $message = "You timed in at {$time}{$label}. Remember to time out when you're done.";
+            } else {
+                $title   = 'Timed out: ' . $activity->name;
+                $message = "You timed out at {$time}. {$hours} " . ((float) $hours === 1.0 ? 'hour' : 'hours') . ' recorded.';
+                if ($status === 'early') {
+                    $message .= ' You left before the activity ended.';
+                } elseif ($status === 'late') {
+                    $message .= ' You timed out after the activity ended.';
+                }
+            }
+
+            $url = \Illuminate\Support\Facades\Route::has('volunteer.attendance')
+                ? route('volunteer.attendance')
+                : route('volunteer.records');
+
+            \App\Models\Notification::create([
+                'user_id'      => $user->id,
+                'category'     => 'attendance',
+                'title'        => $title,
+                'message'      => $message,
+                'action_label' => 'View attendance',
+                'action_url'   => $url,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Attendance bell notification failed: ' . $e->getMessage(), ['user_id' => $user->id]);
+        }
+    }
     /** Returns an error message, or null when the face matches the registered one. */
     private function faceError($user, array $incoming): ?string
     {

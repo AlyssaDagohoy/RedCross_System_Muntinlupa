@@ -61,10 +61,68 @@ const STATUS_FILTERS = [
     { key: 'absent', label: 'Absent', dot: '#b8860b' },
 ];
 
+const RECORD_COLUMNS = [
+    { key: 'date', label: 'Date', essential: true },
+    { key: 'activity', label: 'Activity' },
+    { key: 'location', label: 'Location' },
+    { key: 'by', label: 'Assigned by' },
+    { key: 'in', label: 'Time in', essential: true },
+    { key: 'out', label: 'Time out', essential: true },
+    { key: 'hours', label: 'Hours', essential: true },
+    { key: 'method', label: 'Method' },
+    { key: 'status', label: 'Status', essential: true },
+];
+const ALL_COLUMN_KEYS = RECORD_COLUMNS.map((c) => c.key);
+const ESSENTIAL_COLUMN_KEYS = RECORD_COLUMNS.filter((c) => c.essential).map((c) => c.key);
 export default function Records({ attendances = [] }) {
     const [openId, setOpenId] = useState(null);
     const [month, setMonth] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [search, setSearch] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+    const [locationFilter, setLocationFilter] = useState('all');
+    const [panelOpen, setPanelOpen] = useState(false);
+    const panelRef = useRef(null);
+
+    const [view, setView] = useState(() => {
+        try { return localStorage.getItem('vr.view') === 'table' ? 'table' : 'cards'; } catch (e) { return 'cards'; }
+    });
+    const [cols, setCols] = useState(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem('vr.cols') || 'null');
+            if (Array.isArray(saved)) {
+                const ok = saved.filter((k) => ALL_COLUMN_KEYS.includes(k));
+                if (ok.length) return ok;
+            }
+        } catch (e) { /* ignore */ }
+        return ALL_COLUMN_KEYS;
+    });
+    const [colsOpen, setColsOpen] = useState(false);
+    const colsRef = useRef(null);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('vr.view', view);
+            localStorage.setItem('vr.cols', JSON.stringify(cols));
+        } catch (e) { /* ignore */ }
+    }, [view, cols]);
+
+    useEffect(() => {
+        if (!colsOpen) return undefined;
+        const onDown = (e) => {
+            if (colsRef.current && !colsRef.current.contains(e.target)) setColsOpen(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [colsOpen]);
+
+    const toggleCol = (key) => {
+        setCols((cur) => {
+            if (cur.includes(key)) return cur.length <= 1 ? cur : cur.filter((k) => k !== key);
+            return RECORD_COLUMNS.map((c) => c.key).filter((k) => k === key || cur.includes(k));
+        });
+    };
 
     const tabRefs = useRef({});
     const [indicator, setIndicator] = useState({ left: 0, width: 0 });
@@ -96,124 +154,264 @@ export default function Records({ attendances = [] }) {
         return Array.from(keys).sort().reverse();
     }, [sortedAttendances]);
 
-    // Month filter first, so pill counts reflect the selected month.
-    const monthFiltered = useMemo(() => {
+    const locationOptions = useMemo(() => {
+        const names = new Set();
+        sortedAttendances.forEach((a) => { if (a.location_name) names.add(a.location_name); });
+        return Array.from(names).sort();
+    }, [sortedAttendances]);
+
+    // Everything except the status tabs, so the status counts reflect the other filters.
+    const baseFiltered = useMemo(() => {
+        const q = search.trim().toLowerCase();
         return sortedAttendances.filter((a) => {
-            const key = String(a.date).slice(0, 7);
-            return month === 'all' || (month === 'this-month' ? key === currentMonthKey : key === month);
+            if (q) {
+                const hay = [a.activity_name, a.location_name, a.assignment, a.assigned_by].filter(Boolean).join(' ').toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            const day = String(a.date).slice(0, 10);
+            if (dateFrom && day < dateFrom) return false;
+            if (dateTo && day > dateTo) return false;
+            if (locationFilter !== 'all' && a.location_name !== locationFilter) return false;
+            return true;
         });
-    }, [sortedAttendances, month, currentMonthKey]);
+    }, [sortedAttendances, search, dateFrom, dateTo, locationFilter]);
 
     const statusCount = (key) => {
-        if (key === 'all') return monthFiltered.length;
-        return monthFiltered.filter((a) => (a.attendance_status ?? '').toLowerCase() === key).length;
+        if (key === 'all') return baseFiltered.length;
+        return baseFiltered.filter((a) => (a.attendance_status ?? '').toLowerCase() === key).length;
     };
 
     const filtered = useMemo(() => {
-        if (statusFilter === 'all') return monthFiltered;
-        return monthFiltered.filter((a) => (a.attendance_status ?? '').toLowerCase() === statusFilter);
-    }, [monthFiltered, statusFilter]);
+        if (statusFilter === 'all') return baseFiltered;
+        return baseFiltered.filter((a) => (a.attendance_status ?? '').toLowerCase() === statusFilter);
+    }, [baseFiltered, statusFilter]);
 
     const groups = useMemo(() => groupByMonth(filtered), [filtered]);
-    const hasFilters = month !== 'all' || statusFilter !== 'all';
+
+    const shortDay = (value) => formatDateShort(`${value}T00:00:00`);
+
+    const chips = [];
+    if (search.trim()) chips.push({ key: 'search', label: `"${search.trim()}"`, remove: () => setSearch('') });
+    if (statusFilter !== 'all') chips.push({ key: 'status', label: STATUS_FILTERS.find((f) => f.key === statusFilter)?.label ?? statusFilter, remove: () => setStatusFilter('all') });
+    if (dateFrom || dateTo) {
+        const range = dateFrom && dateTo ? `${shortDay(dateFrom)} - ${shortDay(dateTo)}` : dateFrom ? `From ${shortDay(dateFrom)}` : `Until ${shortDay(dateTo)}`;
+        chips.push({ key: 'date', label: range, remove: () => { setDateFrom(''); setDateTo(''); } });
+    }
+    if (locationFilter !== 'all') chips.push({ key: 'location', label: locationFilter, remove: () => setLocationFilter('all') });
+
+    const panelCount = (statusFilter !== 'all' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (locationFilter !== 'all' ? 1 : 0);
+
+    const clearAll = () => {
+        setSearch(''); setStatusFilter('all'); setDateFrom(''); setDateTo(''); setLocationFilter('all');
+    };
 
     useEffect(() => {
-        const el = tabRefs.current[statusFilter];
-        if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
-    }, [statusFilter, monthFiltered.length]);
+        if (!panelOpen) return undefined;
+        const onDown = (e) => {
+            if (panelRef.current && !panelRef.current.contains(e.target)) setPanelOpen(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [panelOpen]);
+
+    const fieldLabel = { display: 'block', fontSize: '10.5px', fontWeight: '700', color: '#999', letterSpacing: '0.3px', marginBottom: '6px' };
+    const fieldInput = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: '12px', fontFamily: 'inherit', border: '1px solid #ebebeb', borderRadius: '9px', background: 'white', color: '#333' };
 
     return (
         <VolunteerShell active="records" title="My Records">
-            <div style={{ maxWidth: '980px', margin: '0 auto' }}>
+            <div>
 
                 {/* Header */}
-                <div style={{ marginBottom: '18px' }}>
-                    <h1 style={{ fontSize: '19px', fontWeight: '800', color: '#111', letterSpacing: '-0.2px' }}>My Records</h1>
-                    <p style={{ fontSize: '12px', color: '#999', marginTop: '3px' }}>
-                        Your complete volunteer activity history, most recent first
-                    </p>
-                </div>
 
-                {/* Status pills + month filter */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                    <div style={{
-                        position: 'relative', display: 'inline-flex', alignItems: 'center',
-                        background: '#f2f2f3', borderRadius: '11px', padding: '3px', gap: '2px',
-                    }}>
-                        <span style={{
-                            position: 'absolute', top: '3px', bottom: '3px',
-                            left: indicator.left, width: indicator.width,
-                            background: 'white', borderRadius: '8px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                            transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)',
-                        }} />
-                        {STATUS_FILTERS.map((f) => {
-                            const active = statusFilter === f.key;
-                            return (
-                                <button
-                                    key={f.key}
-                                    ref={(el) => { tabRefs.current[f.key] = el; }}
-                                    type="button"
-                                    onClick={() => setStatusFilter(f.key)}
-                                    style={{
-                                        position: 'relative', zIndex: 1,
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        padding: '7px 13px', border: 'none', background: 'transparent',
-                                        cursor: 'pointer', fontFamily: 'inherit', borderRadius: '8px',
-                                        whiteSpace: 'nowrap',
-                                    }}
-                                >
-                                    {f.dot && (
-                                        <span style={{
-                                            width: '5px', height: '5px', borderRadius: '50%',
-                                            background: f.dot, flexShrink: 0, opacity: active ? 1 : 0.55,
-                                        }} />
-                                    )}
-                                    <span style={{
-                                        fontSize: '11.5px', fontWeight: active ? '600' : '500',
-                                        color: active ? '#111' : '#888', transition: 'color 0.15s',
-                                    }}>{f.label}</span>
-                                    <span style={{ fontSize: '10px', fontWeight: '600', color: active ? '#aaa' : '#bbb' }}>
-                                        {statusCount(f.key)}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-
+                {/* Search + filters */}
+                <div style={{ marginBottom: '16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <select
-                            value={month}
-                            onChange={(e) => setMonth(e.target.value)}
-                            style={{
-                                padding: '8px 12px', fontSize: '12px', fontFamily: 'inherit', fontWeight: '500',
-                                border: '1px solid #ebebeb', borderRadius: '9px', background: 'white',
-                                color: '#333', cursor: 'pointer',
-                            }}
-                        >
-                            <option value="all">All months</option>
-                            <option value="this-month">This month</option>
-                            {monthOptions.map((key) => (
-                                <option key={key} value={key}>{monthLabel(key)}</option>
-                            ))}
-                        </select>
+                        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                                style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                                <circle cx="11" cy="11" r="7" />
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            </svg>
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Search activity, location, assignment..."
+                                style={{ ...fieldInput, padding: '9px 12px 9px 34px', outline: 'none' }}
+                            />
+                        </div>
 
-                        {hasFilters && (
+                        <div ref={panelRef} style={{ position: 'relative', flexShrink: 0 }}>
                             <button
                                 type="button"
-                                onClick={() => { setMonth('all'); setStatusFilter('all'); }}
+                                onClick={() => setPanelOpen((v) => !v)}
                                 style={{
-                                    padding: '8px 14px', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit',
-                                    border: 'none', borderRadius: '9px', background: '#fdeaea', color: '#CC0000', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '7px',
+                                    padding: '9px 14px', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit',
+                                    border: '1px solid ' + (panelOpen || panelCount > 0 ? '#CC0000' : '#ebebeb'),
+                                    borderRadius: '9px', cursor: 'pointer',
+                                    background: panelOpen || panelCount > 0 ? '#CC0000' : 'white',
+                                    color: panelOpen || panelCount > 0 ? 'white' : '#333',
                                 }}
                             >
-                                Clear
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                </svg>
+                                Filters
+                                {panelCount > 0 && (
+                                    <span style={{
+                                        minWidth: '16px', height: '16px', borderRadius: '8px', padding: '0 4px',
+                                        background: 'white', color: '#CC0000', fontSize: '10px', fontWeight: '700',
+                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box',
+                                    }}>{panelCount}</span>
+                                )}
                             </button>
+
+                            {panelOpen && (
+                                <div style={{
+                                    position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20,
+                                    width: '300px', maxWidth: 'calc(100vw - 48px)', boxSizing: 'border-box',
+                                    background: 'white', border: '1px solid #ebebeb', borderRadius: '12px',
+                                    boxShadow: '0 8px 24px rgba(0,0,0,0.10)', padding: '14px',
+                                }}>
+                                    <span style={fieldLabel}>STATUS</span>
+                                    <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+                                        {STATUS_FILTERS.map((f) => {
+                                            const active = statusFilter === f.key;
+                                            return (
+                                                <button
+                                                    key={f.key}
+                                                    type="button"
+                                                    onClick={() => setStatusFilter(f.key)}
+                                                    style={{
+                                                        flex: 1, padding: '7px 6px', fontSize: '11.5px', fontWeight: active ? '600' : '500',
+                                                        fontFamily: 'inherit', borderRadius: '8px', cursor: 'pointer',
+                                                        border: active ? '1px solid #CC0000' : '1px solid #ebebeb',
+                                                        background: active ? '#CC0000' : 'white',
+                                                        color: active ? 'white' : '#666',
+                                                    }}
+                                                >
+                                                    {f.label} <span style={{ fontSize: '10px', opacity: 0.7 }}>{statusCount(f.key)}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <span style={fieldLabel}>DATE RANGE</span>
+                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                                        <input type="date" aria-label="From date" value={dateFrom} max={dateTo || undefined}
+                                            onChange={(e) => setDateFrom(e.target.value)} style={fieldInput} />
+                                        <input type="date" aria-label="To date" value={dateTo} min={dateFrom || undefined}
+                                            onChange={(e) => setDateTo(e.target.value)} style={fieldInput} />
+                                    </div>
+
+                                    <span style={fieldLabel}>LOCATION</span>
+                                    <select
+                                        value={locationFilter}
+                                        onChange={(e) => setLocationFilter(e.target.value)}
+                                        style={{ ...fieldInput, cursor: 'pointer', marginBottom: '14px' }}
+                                    >
+                                        <option value="all">All locations</option>
+                                        {locationOptions.map((name) => (
+                                            <option key={name} value={name}>{name}</option>
+                                        ))}
+                                    </select>
+
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <button
+                                            type="button"
+                                            onClick={clearAll}
+                                            style={{ border: 'none', background: 'transparent', color: '#CC0000', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer', padding: '6px 2px' }}
+                                        >
+                                            Clear all
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPanelOpen(false)}
+                                            style={{ border: 'none', borderRadius: '9px', background: '#CC0000', color: 'white', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer', padding: '8px 16px' }}
+                                        >
+                                            Done
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '10px' }}>
+                        <div role="group" aria-label="View" style={{ display: 'flex', border: '1px solid #ebebeb', borderRadius: '9px', overflow: 'hidden', background: 'white' }}>
+                            {[['cards', 'Cards'], ['table', 'Table']].map(([k, label]) => (
+                                <button
+                                    key={k}
+                                    type="button"
+                                    aria-pressed={view === k}
+                                    onClick={() => { setView(k); setColsOpen(false); }}
+                                    style={{ border: 'none', padding: '7px 14px', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer', background: view === k ? '#CC0000' : 'white', color: view === k ? 'white' : '#666' }}
+                                >{label}</button>
+                            ))}
+                        </div>
+                        {view === 'table' && (
+                            <div ref={colsRef} style={{ position: 'relative', flexShrink: 0 }}>
+                                <button
+                                    type="button"
+                                    aria-expanded={colsOpen}
+                                    onClick={() => setColsOpen((v) => !v)}
+                                    style={{ padding: '7px 14px', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', borderRadius: '9px', cursor: 'pointer', border: '1px solid ' + (colsOpen ? '#CC0000' : '#ebebeb'), background: 'white', color: colsOpen ? '#CC0000' : '#333' }}
+                                >Columns</button>
+                                {colsOpen && (
+                                    <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: '300px', maxWidth: 'calc(100vw - 48px)', boxSizing: 'border-box', background: 'white', border: '1px solid #ebebeb', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.10)', padding: '14px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                            <span style={{ fontSize: '12px', fontWeight: '700', color: '#111' }}>Choose your columns</span>
+                                            <span style={{ display: 'flex', gap: '6px' }}>
+                                                <button type="button" onClick={() => setCols(ESSENTIAL_COLUMN_KEYS)} style={{ fontSize: '11px', fontFamily: 'inherit', border: '1px solid #ebebeb', background: 'white', borderRadius: '7px', padding: '3px 9px', cursor: 'pointer', color: '#333' }}>Essential</button>
+                                                <button type="button" onClick={() => setCols(ALL_COLUMN_KEYS)} style={{ fontSize: '11px', fontFamily: 'inherit', border: '1px solid #ebebeb', background: 'white', borderRadius: '7px', padding: '3px 9px', cursor: 'pointer', color: '#333' }}>All</button>
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px 12px' }}>
+                                            {RECORD_COLUMNS.map((c) => (
+                                                <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#333', cursor: 'pointer' }}>
+                                                    <input type="checkbox" checked={cols.includes(c.key)} onChange={() => toggleCol(c.key)} style={{ accentColor: '#CC0000', width: '15px', height: '15px' }} />
+                                                    {c.label}
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f0f0f0', fontSize: '11px', color: '#999' }}>
+                                            {cols.length} of {RECORD_COLUMNS.length} columns shown
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
+                    {chips.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
+                            {chips.map((c) => (
+                                <span key={c.key} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '4px 6px 4px 10px', fontSize: '11px', fontWeight: '600',
+                                    color: '#CC0000', background: '#fdeaea', borderRadius: '999px',
+                                }}>
+                                    {c.label}
+                                    <button
+                                        type="button"
+                                        onClick={c.remove}
+                                        aria-label={`Remove ${c.label} filter`}
+                                        style={{ border: 'none', background: 'transparent', color: '#CC0000', cursor: 'pointer', padding: '0 4px', fontSize: '14px', lineHeight: 1, fontFamily: 'inherit' }}
+                                    >&times;</button>
+                                </span>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={clearAll}
+                                style={{ border: 'none', background: 'transparent', color: '#888', fontSize: '11px', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer', padding: '4px 6px' }}
+                            >
+                                Clear all
+                            </button>
+                        </div>
+                    )}
                 </div>
 
-                <RecordGroups groups={groups} openId={openId} setOpenId={setOpenId} />
+                {view === 'table' ? <RecordsTable rows={filtered} cols={cols} /> : <RecordGroups groups={groups} openId={openId} setOpenId={setOpenId} />}
             </div>
         </VolunteerShell>
     );
@@ -224,7 +422,7 @@ export default function Records({ attendances = [] }) {
 function RecordGroups({ groups, openId, setOpenId }) {
     if (groups.length === 0) {
         return (
-            <div style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '14px' }}>
+            <div style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '12px' }}>
                 <EmptyState text="No matching records" />
             </div>
         );
@@ -242,6 +440,59 @@ function RecordGroups({ groups, openId, setOpenId }) {
     ));
 }
 
+/* ------------------------------ Table view ------------------------------ */
+
+function recordCell(a, key) {
+    const dash = '\u2014';
+    switch (key) {
+        case 'date': return <span style={{ fontWeight: 600, color: '#111' }}>{formatDate(a.date)}</span>;
+        case 'activity': return a.activity_name || dash;
+        case 'location': return a.location_name || dash;
+        case 'by': return a.assigned_by || dash;
+        case 'in': return <span style={{ color: '#16a34a', fontWeight: 600 }}>{formatTime(a.time_in)}</span>;
+        case 'out': return <span style={{ color: '#CC0000', fontWeight: 600 }}>{formatTime(a.time_out)}</span>;
+        case 'hours': return Number.isFinite(Number(a.hours_rendered)) && a.hours_rendered !== null && a.hours_rendered !== '' ? Number(a.hours_rendered).toFixed(1) : dash;
+        case 'method': return a.time_in ? methodLabel(a.attendance_method) : dash;
+        case 'status': return <StatusPill status={a.attendance_status} />;
+        default: return dash;
+    }
+}
+
+function RecordsTable({ rows, cols }) {
+    const shown = RECORD_COLUMNS.filter((c) => cols.includes(c.key));
+    if (rows.length === 0) {
+        return (
+            <div style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '12px' }}>
+                <EmptyState text="No matching records" />
+            </div>
+        );
+    }
+    const th = { fontSize: '10.5px', fontWeight: '600', color: '#999', textAlign: 'left', padding: '10px 16px', background: '#fafafa', borderBottom: '1px solid #f0f0f0', whiteSpace: 'nowrap' };
+    const td = { fontSize: '12px', color: '#333', padding: '12px 16px', borderBottom: '1px solid #f5f5f5', whiteSpace: 'nowrap' };
+    return (
+        <div style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                    <thead>
+                        <tr>{shown.map((c) => <th key={c.key} style={th}>{c.label}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                        {rows.map((a, i) => (
+                            <tr key={a.id}>
+                                {shown.map((c) => (
+                                    <td key={c.key} style={{ ...td, borderBottom: i === rows.length - 1 ? 'none' : td.borderBottom }}>{recordCell(a, c.key)}</td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            <div style={{ padding: '10px 16px', borderTop: '1px solid #f5f5f5', fontSize: '11px', color: '#999' }}>
+                Showing {rows.length} record{rows.length !== 1 ? 's' : ''}
+            </div>
+        </div>
+    );
+}
 function MonthDivider({ label, count }) {
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '0 0 10px' }}>
@@ -301,8 +552,7 @@ function RecordRow({ a, isOpen, onToggle }) {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                     <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '12.5px', fontWeight: '700', color: '#111' }}>{Number(a.hours_rendered ?? 0).toFixed(1)}h</div>
-                        <div style={{ marginTop: '3px' }}><ActivityStatusPill status={a.activity_status} compact /></div>
+                        <ActivityStatusPill status={a.activity_status} compact />
                     </div>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
                         style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>

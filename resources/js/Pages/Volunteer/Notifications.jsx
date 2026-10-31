@@ -89,18 +89,17 @@ export default function Notifications({ notifications = [] }) {
                 .notif-card:hover { border-color: #d8d8d8; }
                 .notif-card:active { background: #fafafa; }
                 .filter-btn { border: 1px solid #ebebeb; background: white; color: #666; }
-                .filter-btn.active { border-color: #CC0000; background: #fdeaea; color: #CC0000; }
+                .filter-btn.active { border-color: #CC0000; background: #CC0000; color: white; }
                 @media (max-width: 480px) {
                     .notif-header-row { flex-direction: column; align-items: flex-start !important; gap: 10px !important; }
                 }
             `}</style>
 
-            <div style={{ maxWidth: '760px', margin: '0 auto' }}>
+            <div>
 
                 {/* Header */}
                 <div className="notif-header-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
                     <div>
-                        <h1 style={{ fontSize: '20px', fontWeight: '700', color: '#141414' }}>Notifications</h1>
                         <p style={{ fontSize: '13.5px', color: '#888', marginTop: '4px' }}>
                             {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}` : "You're all caught up."}
                         </p>

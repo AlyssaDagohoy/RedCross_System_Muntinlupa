@@ -7,12 +7,13 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Permission\Traits\HasRoles;
 
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, HasRoles;
+    use HasFactory, Notifiable, HasRoles, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -39,6 +40,14 @@ class User extends Authenticatable
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::created(function (User $user) {
+            if (empty($user->biometric_id)) {
+                $user->forceFill(['biometric_id' => $user->id])->saveQuietly();
+            }
+        });
+    }
     public function activities()
     {
         return $this->belongsToMany(Activity::class, 'activity_volunteer');

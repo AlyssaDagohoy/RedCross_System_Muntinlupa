@@ -124,7 +124,39 @@ function ProfileBody({ user, profile }) {
                 </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: '12px', alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)', gap: '12px', alignItems: 'start' }}>
+                {/* Account column */}
+                <aside aria-label="Account information" style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', padding: '22px 18px', textAlign: 'center' }}>
+                    <div style={{ width: '92px', height: '92px', borderRadius: '50%', margin: '0 auto 12px', background: '#fff0f0', color: '#CC0000', fontSize: '28px', fontWeight: '600', display: 'grid', placeItems: 'center', overflow: 'hidden', border: '3px solid white', boxShadow: '0 0 0 1px #ebebeb' }}>
+                        {photoPreview ? <img src={photoPreview} alt="Your profile photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span aria-hidden="true">{user.name?.charAt(0).toUpperCase()}</span>}
+                    </div>
+                    <label style={{ display: 'inline-block', position: 'relative', fontSize: '10.5px', fontWeight: '600', color: '#333', border: '1px solid #e0e0e0', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer' }}>
+                        {photoPreview ? 'Change photo' : 'Upload photo'}
+                        <input type="file" accept="image/*" onChange={pickPhoto} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+                    </label>
+                    {(photoError || errors.photo) && <p role="alert" style={{ fontSize: '10.5px', color: '#b3261e', fontWeight: '500', marginTop: '8px' }}>{photoError || errors.photo}</p>}
+
+                    <dl style={{ margin: '18px 0 0', textAlign: 'left' }}>
+                        <Row label="Volunteer ID">{profile.volunteer_id || '—'}</Row>
+                        <Row label="Volunteer status">{profile.status || 'Approved'}</Row>
+                        <Row label="Date joined">{joined}</Row>
+                        <Row label="Profile setup">
+                            <Pill ok={setup.profile_completed}>{setup.profile_completed ? 'Completed' : 'Not Yet Completed'}</Pill>
+                        </Row>
+                        <Row label="Face registration">
+                            <Pill ok={setup.face_done}>{setup.face_done ? 'Registered' : faceStatusLabel(setup)}</Pill>
+                            {setup.face_needed && (
+                                <div>
+                                    <button type="button" onClick={openFace} className="btn-view" style={{ marginTop: '8px', fontSize: '10px', fontWeight: '600', color: '#333', background: 'white', border: '1px solid #e0e0e0', borderRadius: '5px', padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Register My Face</button>
+                                </div>
+                            )}
+                        </Row>
+                    </dl>
+                    <p style={{ fontSize: '10px', color: '#aaa', marginTop: '14px', lineHeight: 1.55, textAlign: 'left' }}>
+                        Volunteer ID, status and date joined are managed by the Red Cross and cannot be edited.
+                    </p>
+                </aside>
+
                 <form onSubmit={submit} noValidate style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
                     <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
                         <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Your details</span>
@@ -183,38 +215,6 @@ function ProfileBody({ user, profile }) {
                         </button>
                     </div>
                 </form>
-
-                {/* Account column */}
-                <aside aria-label="Account information" style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', padding: '22px 18px', textAlign: 'center' }}>
-                    <div style={{ width: '92px', height: '92px', borderRadius: '50%', margin: '0 auto 12px', background: '#fff0f0', color: '#CC0000', fontSize: '28px', fontWeight: '600', display: 'grid', placeItems: 'center', overflow: 'hidden', border: '3px solid white', boxShadow: '0 0 0 1px #ebebeb' }}>
-                        {photoPreview ? <img src={photoPreview} alt="Your profile photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span aria-hidden="true">{user.name?.charAt(0).toUpperCase()}</span>}
-                    </div>
-                    <label style={{ display: 'inline-block', position: 'relative', fontSize: '10.5px', fontWeight: '600', color: '#CC0000', border: '1px solid #f0c8c8', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer' }}>
-                        {photoPreview ? 'Change photo' : 'Upload photo'}
-                        <input type="file" accept="image/*" onChange={pickPhoto} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
-                    </label>
-                    {(photoError || errors.photo) && <p role="alert" style={{ fontSize: '10.5px', color: '#b3261e', fontWeight: '500', marginTop: '8px' }}>{photoError || errors.photo}</p>}
-
-                    <dl style={{ margin: '18px 0 0', textAlign: 'left' }}>
-                        <Row label="Volunteer ID">{profile.volunteer_id || '—'}</Row>
-                        <Row label="Volunteer status">{profile.status || 'Approved'}</Row>
-                        <Row label="Date joined">{joined}</Row>
-                        <Row label="Profile setup">
-                            <Pill ok={setup.profile_completed}>{setup.profile_completed ? 'Completed' : 'Not Yet Completed'}</Pill>
-                        </Row>
-                        <Row label="Face registration">
-                            <Pill ok={setup.face_done}>{setup.face_done ? 'Registered' : faceStatusLabel(setup)}</Pill>
-                            {setup.face_needed && (
-                                <div>
-                                    <button type="button" onClick={openFace} className="btn-view" style={{ marginTop: '8px', fontSize: '10px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '5px', padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>Register My Face</button>
-                                </div>
-                            )}
-                        </Row>
-                    </dl>
-                    <p style={{ fontSize: '10px', color: '#aaa', marginTop: '14px', lineHeight: 1.55, textAlign: 'left' }}>
-                        Volunteer ID, status and date joined are managed by the Red Cross and cannot be edited.
-                    </p>
-                </aside>
             </div>
         </>
     );

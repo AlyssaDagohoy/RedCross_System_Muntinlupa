@@ -56,6 +56,13 @@ const btnGhost = { background: 'white', color: '#555', border: '1px solid #e0e0e
 // Screens at or below this width use the drawer sidebar. Keep in sync with the @media rule in the <style> block.
 const MOBILE_BREAKPOINT = 900;
 
+const todayParts = () => {
+    const d = new Date();
+    return {
+        weekday: d.toLocaleDateString('en-US', { weekday: 'long' }),
+        date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
+    };
+};
 export default function VolunteerShell({ active, title, notifications = [], children }) {
     const { auth, volunteerSetup, volunteerNotifications } = usePage().props;
     const volunteer = auth?.user;
@@ -76,7 +83,13 @@ export default function VolunteerShell({ active, title, notifications = [], chil
     const [showNotifications, setShowNotifications] = useState(false);
     const [showUserMenu, setShowUserMenu] = useState(false);
     const [showFacePrompt, setShowFacePrompt] = useState(false);
-    const [navOpen, setNavOpen] = useState(false); // mobile drawer
+    const [navOpen, setNavOpen] = useState(false);
+    const [sbHidden, setSbHidden] = useState(() => { try { return localStorage.getItem('vp_sidebar_hidden') === '1'; } catch { return false; } });
+    const toggleSidebar = () => {
+        const next = !sbHidden;
+        setSbHidden(next);
+        try { localStorage.setItem('vp_sidebar_hidden', next ? '1' : '0'); } catch { /* ignore */ }
+    }; // mobile drawer
     const [isMac, setIsMac] = useState(false);
     const [logoFailed, setLogoFailed] = useState(false);
     const [toast, setToast] = useState('');
@@ -150,9 +163,9 @@ export default function VolunteerShell({ active, title, notifications = [], chil
         setShowUserMenu(false);
         if (opening) {
             setNewCount(unreadCount);
-            const readUrl = safeRoute('volunteer.notifications.read', null);
+            const readUrl = safeRoute('volunteer.notifications.read-all', null);
             if (unreadCount > 0 && readUrl) {
-                router.post(readUrl, {}, { preserveScroll: true, preserveState: true, only: ['volunteerNotifications'] });
+                router.patch(readUrl, {}, { preserveScroll: true, preserveState: true, only: ['volunteerNotifications'] });
             }
         }
     };
@@ -160,7 +173,7 @@ export default function VolunteerShell({ active, title, notifications = [], chil
     // A notification can carry its own link (e.g. to the activity or attendance record it's about).
     const handleNotificationClick = (n) => {
         setShowNotifications(false);
-        if (n.action_url) router.visit(n.action_url);
+        const listUrl = safeRoute('volunteer.notifications', null); router.visit(listUrl || '/volunteer/notifications');
     };
 
     const navGroups = [
@@ -168,10 +181,20 @@ export default function VolunteerShell({ active, title, notifications = [], chil
             title: 'Menu',
             items: [
                 { key: 'dashboard',     label: 'Dashboard',  href: route('volunteer.dashboard'),     icon: <DashIcon /> },
-                { key: 'schedule',      label: 'Schedule',   href: route('volunteer.schedule'),      icon: <CalIcon /> },
                 { key: 'communication', label: 'Messages',   href: route('volunteer.communication'), icon: <MsgIcon /> },
+            ],
+        },
+        {
+            title: 'Attendance',
+            items: [
+                { key: 'schedule',      label: 'Schedule',   href: route('volunteer.schedule'),      icon: <CalIcon /> },
                 { key: 'attendance',    label: 'Attendance', href: route('volunteer.attendance'),    icon: <ClockIcon /> },
-                { key: 'records',       label: 'My Records', href: safeRoute('volunteer.records'),    icon: <RecordsIcon /> },
+                { key: 'records',       label: 'My Records', href: safeRoute('volunteer.records'),   icon: <RecordsIcon /> },
+            ],
+        },
+        {
+            title: 'Profile',
+            items: [
                 { key: 'file201',       label: '201 File',   href: safeRoute('volunteer.file201'),   icon: <RecordsIcon /> },
             ],
         },
@@ -202,6 +225,60 @@ export default function VolunteerShell({ active, title, notifications = [], chil
             <style>{`
                 * { box-sizing: border-box; margin: 0; padding: 0; }
                 body { background: #f7f7f8; }
+                :root { --rc-red: #B92F2F; }
+                @keyframes rc-slide { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+                @keyframes rc-fade { from { opacity: 0; } to { opacity: 1; } }
+                .vp-root .vp-main { animation: rc-slide 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) backwards; }
+                .vp-root .nav-link.active { animation: rc-fade 0.35s ease-out backwards; }
+                .vp-root .vp-content { overflow-x: hidden; }
+                @media (prefers-reduced-motion: reduce) { .vp-root .vp-main, .vp-root .nav-link.active { animation: none !important; } }
+                body { background: var(--rc-red); }
+                .vp-root { background: var(--rc-red) !important; }
+                .vp-root .vp-sidebar { background: var(--rc-red) !important; border: 0 !important; box-shadow: none !important; }
+                .vp-root .vp-sidebar svg { stroke-width: 1.5; }
+                .vp-root .nav-link { color: rgba(255,255,255,0.9) !important; border-radius: 10px !important; }
+                .vp-root .nav-link svg { width: 16px; height: 16px; }
+                .vp-root .nav-link.active { background: #fff !important; color: var(--rc-red) !important; }
+                .vp-root .nav-link:not(.active):hover { background: rgba(255,255,255,0.14) !important; color: #fff !important; }
+                .vp-root .vp-sidebar nav > div { border-top-color: rgba(255,255,255,0.18) !important; }
+                .vp-root .vp-sidebar nav > div > div:first-child { color: rgba(255,255,255,0.6) !important; }
+                .vp-root .vp-sidebar .vp-desk-brand, .vp-root .vp-sidebar .vp-mobile-only { border-bottom-color: rgba(255,255,255,0.18) !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:last-child > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:last-child > span:first-child { color: #fff !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:last-child > span:last-child, .vp-root .vp-sidebar .vp-mobile-only a > span:last-child > span:last-child { color: rgba(255,255,255,0.72) !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:first-child { background: #fff !important; border-radius: 50%; padding: 5px; }
+                /* S2S-TAG: logo, name and tagline layout */
+                .vp-root .vp-sidebar .vp-desk-brand > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:first-child { width: 40px !important; height: 40px !important; flex-shrink: 0 !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:last-child > span:first-child { font-size: 15px !important; line-height: 1.1 !important; }
+                .vp-root .vp-sidebar .vp-mobile-only a > span:last-child > span:first-child { font-size: 14px !important; line-height: 1.1 !important; }
+                .vp-root .vp-sidebar .s2s-tag { color: rgba(255,255,255,0.88) !important; font-size: 9px !important; font-weight: 500 !important; letter-spacing: 0.02em !important; text-transform: none !important; white-space: nowrap !important; }
+                /* S2S-WORDMARK2: logo slot + scan-bracket 2 */
+                .vp-root .vp-sidebar .vp-desk-brand { gap: 8px !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:first-child { display: flex !important; width: 38px !important; height: 38px !important; flex-shrink: 0 !important; }
+                .brand-chip > span:first-child { display: flex !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:last-child > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:last-child > span:first-child { font-size: 16px !important; font-weight: 800 !important; letter-spacing: -0.02em !important; line-height: 1.15 !important; }
+                .brand-chip > span:last-child > span:first-child { font-size: 18px !important; font-weight: 800 !important; letter-spacing: -0.02em !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:last-child > span:first-child > span, .vp-root .vp-sidebar .vp-mobile-only a > span:last-child > span:first-child > span { display: inline-block !important; padding: 0.06em 0.24em !important; margin: 0 0.06em !important; color: #ffffff !important; background: linear-gradient(#ffffff,#ffffff) 0 0/.32em 2px no-repeat, linear-gradient(#ffffff,#ffffff) 0 0/2px .32em no-repeat, linear-gradient(#ffffff,#ffffff) 100% 0/.32em 2px no-repeat, linear-gradient(#ffffff,#ffffff) 100% 0/2px .32em no-repeat, linear-gradient(#ffffff,#ffffff) 0 100%/.32em 2px no-repeat, linear-gradient(#ffffff,#ffffff) 0 100%/2px .32em no-repeat, linear-gradient(#ffffff,#ffffff) 100% 100%/.32em 2px no-repeat, linear-gradient(#ffffff,#ffffff) 100% 100%/2px .32em no-repeat !important; }
+                .brand-chip > span:last-child > span:first-child > span { display: inline-block !important; padding: 0.06em 0.24em !important; margin: 0 0.06em !important; color: #dc2626 !important; background: linear-gradient(#dc2626,#dc2626) 0 0/.32em 2px no-repeat, linear-gradient(#dc2626,#dc2626) 0 0/2px .32em no-repeat, linear-gradient(#dc2626,#dc2626) 100% 0/.32em 2px no-repeat, linear-gradient(#dc2626,#dc2626) 100% 0/2px .32em no-repeat, linear-gradient(#dc2626,#dc2626) 0 100%/.32em 2px no-repeat, linear-gradient(#dc2626,#dc2626) 0 100%/2px .32em no-repeat, linear-gradient(#dc2626,#dc2626) 100% 100%/.32em 2px no-repeat, linear-gradient(#dc2626,#dc2626) 100% 100%/2px .32em no-repeat !important; }
+                /* S2S-WORDMARK2-END */
+                /* S2S-FIT: logo fills the white circle */
+                /* S2S-WHITE: readable white brand name */
+                .vp-root .vp-sidebar .vp-desk-brand > span:last-child > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:last-child > span:first-child { color: #ffffff !important; font-weight: 800 !important; letter-spacing: 0.2px !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:first-child { padding: 3px !important; overflow: hidden !important; box-sizing: border-box !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:first-child img, .vp-root .vp-sidebar .vp-mobile-only a > span:first-child img { width: 100% !important; height: 100% !important; max-width: none !important; object-fit: contain !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:last-child > span:first-child > span, .vp-root .vp-sidebar .vp-mobile-only a > span:last-child > span:first-child > span { color: #ffffff !important; }
+                .vp-root .vp-content { position: absolute !important; top: 8px; right: 8px; bottom: 8px; left: 8px; margin: 0 !important; padding-top: 56px !important; min-height: 0 !important; overflow-y: auto; background: #fff; border-radius: 18px; }
+                .vp-root .vp-header { top: 8px !important; left: 8px !important; right: 8px !important; height: 56px !important; background: #fff !important; border: 0 !important; box-shadow: none !important; border-radius: 18px 18px 0 0 !important; }
+                @media (min-width: ${MOBILE_BREAKPOINT + 1}px) {
+                    .vp-root .vp-sidebar { border-radius: 0 !important; }
+                    .vp-root .vp-content { top: 10px; right: 10px; bottom: 10px; left: 200px; border-radius: 22px; }
+                    .vp-root .nav-link.active { border-radius: 12px 0 0 12px !important; margin-right: -10px; position: relative; }
+                    .vp-root .nav-link.active::before, .vp-root .nav-link.active::after { content: ''; position: absolute; right: 0; width: 14px; height: 14px; pointer-events: none; }
+                    .vp-root .nav-link.active::before { top: -14px; background: radial-gradient(circle at 0 0, transparent 13.5px, #fff 14px); }
+                    .vp-root .nav-link.active::after { bottom: -14px; background: radial-gradient(circle at 0 100%, transparent 13.5px, #fff 14px); }
+                    .vp-root .vp-header { top: 10px !important; left: 200px !important; right: 10px !important; border-radius: 22px 22px 0 0 !important; }
+                    .vp-root.sb-hidden .vp-content { left: 10px; }
+                    .vp-root.sb-hidden .vp-header { left: 10px !important; border-radius: 22px 22px 0 0 !important; }
+                }
                 .nav-link:not(.active):hover { background: #f5f5f6 !important; color: #111 !important; }
                 .logout-btn:hover { background: #ffe3e3 !important; }
                 .task-row:hover { background: #fafafa !important; }
@@ -262,15 +339,46 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                     .vp-dr-brand { display: flex !important; align-items: center; gap: 10px; flex: 1; min-width: 0; text-decoration: none; }
                     .vp-page-title { display: block !important; font-size: 16px; font-weight: 600; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 46vw; padding-left: 2px; }
                 }
+                .vp-desk-brand { display: flex; align-items: center; gap: 10px; padding: 16px 14px 12px; border-bottom: 1px solid #f0f0f0; text-decoration: none; }
+                @media (min-width: ${MOBILE_BREAKPOINT + 1}px) {
+                    .brand-chip { display: none !important; }
+                    .vp-page-title { display: block !important; font-size: 16px; font-weight: 600; color: #111; padding-left: 12px; }
+                }
+                @media (max-width: ${MOBILE_BREAKPOINT}px) {
+                    .vp-desk-brand { display: none !important; }
+                }
+                @media (min-width: ${MOBILE_BREAKPOINT + 1}px) {
+                    .vp-sidebar { top: 12px !important; }
+                    header[style*="z-index: 150"] { left: 224px !important; }
+                    .vp-desk-brand { height: 56px; padding: 0 14px !important; }
+                }
+                .vp-pt-main { display: block; font-size: 14px; font-weight: 600; color: #111; line-height: 1.2; }
+                .vp-pt-date { display: block; font-size: 10px; color: #999; margin-top: 2px; line-height: 1.2; }
+                .vp-pt-date b { color: #CC0000; font-weight: 600; }
+                @media (max-width: 600px) { .vp-pt-date { display: none; } }
+                /* layout v2: docked, rounded, collapsible sidebar */
+                .vp-sb-toggle { /* sb-toggle v5 */ display: none; position: fixed; top: 16px; left: 188px; width: 24px; height: 24px; margin: 0; padding: 0; border: 1px solid #e4e4e7; border-radius: 50%; background: #fff; cursor: pointer; align-items: center; justify-content: center; z-index: 60; transition: left 0.2s ease, background 0.15s ease; }
+                @media (min-width: ${MOBILE_BREAKPOINT + 1}px) {
+                    .vp-sb-toggle { display: flex; } .vp-sb-toggle:hover { background: #f4f4f5; } .vp-header { z-index: 50 !important; } .vp-sidebar { z-index: 40 !important; } .sb-hidden .vp-sb-toggle { left: 8px; } .sb-hidden .vp-header { padding-left: 48px !important; }
+                    .vp-sidebar { top: 0 !important; left: 0 !important; bottom: 0 !important; width: 200px !important; border: 1px solid #e4e4e7 !important; border-left-width: 0 !important; border-radius: 0 12px 12px 0 !important; box-shadow: none !important; transition: transform 0.2s ease !important; }
+                    .vp-header { top: 0 !important; left: 212px !important; right: 0 !important; height: 56px !important; border: 1px solid #e4e4e7 !important; border-top-width: 0 !important; border-right-width: 0 !important; border-radius: 0 0 0 12px !important; box-shadow: none !important; transition: left 0.2s ease !important; }
+                    .vp-desk-brand { height: 56px; padding: 0 14px !important; border-bottom-color: #e4e4e7 !important; }
+                    .vp-content { margin-left: 212px !important; padding-top: 56px !important; transition: margin-left 0.2s ease !important; }
+                    .vp-main { padding: 16px 20px 28px 20px !important; }
+                    .sb-hidden .vp-sidebar { transform: translateX(-105%); visibility: hidden; transition: transform 0.2s ease, visibility 0s linear 0.2s !important; }
+                    .sb-hidden .vp-header { left: 0 !important; border-left-width: 0 !important; border-radius: 0 !important; }
+                    .sb-hidden .vp-content { margin-left: 0 !important; }
+                    .sb-hidden .brand-chip { display: flex !important; }
+                }
                 @media (prefers-reduced-motion: reduce) {
                     .vp-sidebar, .vp-sidebar.open { transition: none !important; }
                 }
             `}</style>
 
-            <div style={{ minHeight: '100vh', fontFamily: "'Inter', sans-serif", background: '#f7f7f8' }}>
+            <div className={sbHidden ? 'vp-root sb-hidden' : 'vp-root'} style={{ minHeight: '100vh', fontFamily: "'Inter', sans-serif", background: '#f7f7f8' }}>
 
                 {/* NAVBAR */}
-                <header style={{
+                <header className="vp-header" style={{
                     position: 'fixed', top: '12px', left: '16px', right: '16px', height: '56px', zIndex: 150,
                     background: 'white', border: '1px solid #ebebeb', borderRadius: '16px',
                     boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
@@ -278,6 +386,9 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
                         {/* Hamburger (mobile only) */}
+                        <button type="button" className="icon-btn vp-sb-toggle" aria-label={sbHidden ? 'Show sidebar' : 'Hide sidebar'} aria-pressed={sbHidden} title={sbHidden ? 'Show sidebar' : 'Hide sidebar'} onClick={toggleSidebar}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points={sbHidden ? '9 6 15 12 9 18' : '15 6 9 12 15 18'} /></svg>
+                        </button>
                         <button type="button" className="icon-btn vp-burger" aria-label="Open menu" aria-controls="vp-sidebar" aria-expanded={navOpen} onClick={() => setNavOpen(true)} style={{
                             width: '38px', height: '38px', borderRadius: '50%', background: 'white',
                             border: '1px solid #ebebeb', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -286,7 +397,7 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                         </button>
 
                         {/* Brand */}
-                        <Link href={route('volunteer.dashboard')} className="brand-chip" aria-label="Red Cross Muntinlupa Branch — go to dashboard" style={{
+                        <Link href={route('volunteer.dashboard')} className="brand-chip" aria-label="Scan2Serve — go to dashboard" style={{
                             display: 'flex', alignItems: 'center', gap: '9px', textDecoration: 'none',
                             padding: '4px 8px 4px 4px', borderRadius: '12px',
                         }}>
@@ -296,12 +407,16 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                                     : <RedCrossMark />}
                             </span>
                             <span style={{ lineHeight: 1.2 }}>
-                                <span className="vp-brand-name" style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#111' }}>Red Cross</span>
-                                <span className="vp-brand-sub" style={{ display: 'block', fontSize: '9.5px', color: '#999' }}>Muntinlupa Branch</span>
+                                <span className="vp-brand-name" style={{ display: 'block', fontSize: '15px', fontWeight: '700', color: '#111' }}>Scan<span style={{ color: '#dc2626' }}>2</span>Serve</span>
                             </span>
                         </Link>
                         {/* Page title (phone only) */}
-                        {title && <span className="vp-page-title">{title}</span>}
+                        {title && (
+                            <span className="vp-page-title">
+                                <span className="vp-pt-main">{title}</span>
+                                <span className="vp-pt-date"><b>{todayParts().weekday}</b>&nbsp; {todayParts().date}</span>
+                            </span>
+                        )}
                     </div>
 
                     {/* Search, notifications, user */}
@@ -411,15 +526,15 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                 }}>
                     {/* Signed-in user + close button (mobile drawer only) */}
                     <div className="vp-mobile-only" style={{ alignItems: 'center', gap: '10px', padding: '16px 14px 12px', borderBottom: '1px solid #f0f0f0' }}>
-                        <Link href={route('volunteer.dashboard')} className="vp-dr-brand" onClick={() => setNavOpen(false)} aria-label="Red Cross Muntinlupa Branch, go to dashboard">
+                        <Link href={route('volunteer.dashboard')} className="vp-dr-brand" onClick={() => setNavOpen(false)} aria-label="Scan2Serve, go to dashboard">
                             <span style={{ width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                 {LOGO_SRC && !logoFailed
                                     ? <img src={LOGO_SRC} alt="" onError={() => setLogoFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                     : <RedCrossMark />}
                             </span>
                             <span style={{ lineHeight: 1.2 }}>
-                                <span style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#111' }}>Red Cross</span>
-                                <span style={{ display: 'block', fontSize: '10px', color: '#999' }}>Muntinlupa Branch</span>
+                                <span style={{ display: 'block', fontSize: '15px', fontWeight: '700', color: '#111' }}>Scan<span style={{ color: '#dc2626' }}>2</span>Serve</span>
+                                <span className="s2s-tag" style={{ display: 'block', fontSize: '9px', marginTop: '3px', whiteSpace: 'nowrap' }}>Muntinlupa Branch</span>
                             </span>
                         </Link>
                         <span className="vp-dr-user" style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#CC0000', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '600', flexShrink: 0 }}>
@@ -437,9 +552,20 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                         </button>
                     </div>
 
+                    <Link href={route('volunteer.dashboard')} className="vp-desk-brand" aria-label="Scan2Serve, go to dashboard">
+                        <span style={{ width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {LOGO_SRC && !logoFailed
+                                ? <img src={LOGO_SRC} alt="" onError={() => setLogoFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                : <RedCrossMark />}
+                        </span>
+                        <span style={{ lineHeight: 1.2 }}>
+                            <span style={{ display: 'block', fontSize: '15px', fontWeight: '700', color: '#111' }}>Scan<span style={{ color: '#dc2626' }}>2</span>Serve</span>
+                            <span className="s2s-tag" style={{ display: 'block', fontSize: '9px', marginTop: '3px', whiteSpace: 'nowrap' }}>Muntinlupa Branch</span>
+                        </span>
+                    </Link>
                     <nav aria-label="Volunteer portal" style={{ flex: 1, overflowY: 'auto', padding: '14px 10px 8px' }}>
-                        {navGroups.map((group) => (
-                            <div key={group.title} style={{ marginBottom: '16px' }}>
+                        {navGroups.map((group, gi) => (
+                            <div key={group.title} style={{ marginBottom: '12px', ...(gi > 0 ? { borderTop: '1px solid #f3f3f3', paddingTop: '12px' } : {}) }}>
                                 <div style={{ fontSize: '10.5px', fontWeight: '500', color: '#aaa', padding: '0 12px', marginBottom: '6px' }}>{group.title}</div>
                                 {group.items.map(renderLink)}
                             </div>
@@ -482,8 +608,8 @@ function FacePrompt({ rejected, onRegister, onLater }) {
     return (
         <div role="presentation" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', padding: '16px', zIndex: 300, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
             <div role="dialog" aria-modal="true" aria-labelledby="face-title" tabIndex={-1} ref={dialogRef} style={{ background: 'white', borderRadius: '14px', padding: '30px 28px 24px', width: '100%', maxWidth: '440px', textAlign: 'center', outline: 'none', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
-                <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: '#fff0f0', color: '#CC0000', display: 'grid', placeItems: 'center', margin: '0 auto 16px' }}>
-                    <CameraIcon />
+                <div style={{ width: '52px', height: '52px', color: '#111', display: 'grid', placeItems: 'center', margin: '0 auto 16px' }}>
+                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 7h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2" /><path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></svg>
                 </div>
                 <h2 id="face-title" style={{ fontSize: '17px', fontWeight: '600', color: '#111', marginBottom: '10px' }}>
                     {rejected ? 'Please register your face again' : 'Welcome to the Volunteer Portal!'}
@@ -509,7 +635,7 @@ function FacePrompt({ rejected, onRegister, onLater }) {
 
 // Official chapter logo. Put the image file in your `public` folder (for example public/images/redcross-logo.png)
 // and set its path here. While this is null, a Red Cross emblem drawn in SVG is shown instead.
-const LOGO_SRC = '/images/red-cross-logo.png';
+const LOGO_SRC = '/images/finallogo.png';
 
 function RedCrossMark() {
     return (

@@ -12,6 +12,7 @@ class Activity extends Model
 
     protected $fillable = [
         'name',
+        'type',
         'description',
         'date',
         'start_time',
@@ -27,6 +28,26 @@ class Activity extends Model
     public function volunteers()
     {
         return $this->belongsToMany(User::class, 'activity_volunteer');
+    }
+
+    /**
+     * Keep status in step with the clock: upcoming before the start,
+     * ongoing until the end, completed after. Cancelled is never touched.
+     */
+    public static function syncStatuses(): void
+    {
+        $now = now();
+
+        static::where('status', '!=', 'cancelled')->get()->each(function (self $a) use ($now) {
+            $new = $now->lt($a->startsAt())
+                ? 'upcoming'
+                : ($now->lte($a->endsAt()) ? 'ongoing' : 'completed');
+
+            if ($a->status !== $new) {
+                $a->status = $new;
+                $a->saveQuietly();
+            }
+        });
     }
 
     public function startsAt(): Carbon

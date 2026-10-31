@@ -6,7 +6,7 @@ const STEPS = [
     { key: 'center', title: 'Look Straight Ahead', instruction: 'Keep your face centered and still.' },
     { key: 'left', title: 'Turn Left', instruction: 'Slowly turn your head to the left.' },
     { key: 'right', title: 'Turn Right', instruction: 'Slowly turn your head to the right.' },
-    { key: 'blink', title: 'Blink Naturally', instruction: 'Blink your eyes once.' },
+    { key: 'blink', title: 'Blink Naturally', instruction: 'Close your eyes for a moment, then open them.' },
     { key: 'uploading', title: 'Saving...', instruction: 'Submitting your face profile for approval.' },
     { key: 'done', title: 'Registered', instruction: 'Your face profile has been registered successfully.' },
 ];
@@ -34,6 +34,7 @@ export default function FaceRegistration({ onClose, onRegistered }) {
     const streamRef = useRef(null);
     const holdCounter = useRef(0);
     const blinkPhase = useRef('open');
+const earBase = useRef(0);
 
     const [faceApiReady, setFaceApiReady] = useState(false);
     const [modelsReady, setModelsReady] = useState(false);
@@ -133,6 +134,7 @@ export default function FaceRegistration({ onClose, onRegistered }) {
         let cancelled = false;
         holdCounter.current = 0;
         blinkPhase.current = 'open';
+earBase.current = 0;
 
         const interval = setInterval(async () => {
             if (cancelled) return;
@@ -145,6 +147,7 @@ export default function FaceRegistration({ onClose, onRegistered }) {
                 holdCounter.current = 0;
                 setRingProgress(0);
                 setDebugText('no face detected');
+if (step.key === 'blink' && blinkPhase.current === 'open' && earBase.current > 0) blinkPhase.current = 'closed';
                 return;
             }
 
@@ -171,7 +174,13 @@ export default function FaceRegistration({ onClose, onRegistered }) {
             } else if (step.key === 'right') {
                 conditionMet = ratio < 0.6;
             } else if (step.key === 'blink') {
-                conditionMet = true;
+                earBase.current = Math.max(earBase.current * 0.98, avgEar);
+if (avgEar > earBase.current * 0.88) {
+    if (blinkPhase.current === 'closed') blinkPhase.current = 'done';
+} else if (avgEar < earBase.current * 0.78 && blinkPhase.current === 'open') {
+    blinkPhase.current = 'closed';
+}
+conditionMet = blinkPhase.current === 'done';
             }
 
             if (conditionMet) {

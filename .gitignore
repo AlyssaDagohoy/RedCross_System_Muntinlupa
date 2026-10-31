@@ -24,3 +24,13 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Added before first GitHub push: never upload secrets or backups
+.env.*
+!.env.example
+*.bak
+*.bak-*
+*.before-*
+*.old
+*.orig
+/backup_public_pages/

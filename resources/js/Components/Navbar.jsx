@@ -18,8 +18,7 @@ export default function Navbar() {
                     justifyContent: 'center', color: 'white', fontSize: '20px', fontWeight: '900'
                 }}>+</div>
                 <div>
-                    <strong style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#111' }}>Rizal Chapter</strong>
-                    <span style={{ display: 'block', fontSize: '10px', color: '#888' }}>Muntinlupa City Branch</span>
+                    <strong style={{ display: 'block', fontSize: '15px', fontWeight: '700', color: '#111' }}>Scan<span style={{ color: '#dc2626' }}>2</span>Serve</strong>
                 </div>
             </Link>
 

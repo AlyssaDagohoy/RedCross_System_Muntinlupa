@@ -1,7 +1,7 @@
 import { Link, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import VolunteerShell, { safeRoute, useVolunteerShell, faceStatusLabel } from '../../Components/VolunteerShell';
-import { AttendanceCapture } from '../../Components/FaceAttendance';
+import { AttendanceCapture, RingClockButton, RunningTimer } from '../../Components/FaceAttendance';
 
 export default function VolunteerDashboard({ auth, totalHours, totalDays, monthDays, assignedActivities, recentAttendance, todayAttendance }) {
     const activitiesList = assignedActivities || [];
@@ -24,7 +24,7 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
         });
 
     // Upcoming: only the next 3 activities are shown; the rest live behind "View All"
-    const upcomingActivities = activitiesList.filter(a => new Date(a.date) > new Date()).slice(0, 3);
+    const upcomingActivities = activitiesList.filter(a => new Date(a.date) >= new Date(new Date().setHours(24, 0, 0, 0))).slice(0, 3);
 
     const [activeCapture, setActiveCapture] = useState(null);
     // Inline-expanded item. Keys are namespaced ("today-<id>" / "up-<id>" / "rec-<index>") so
@@ -49,15 +49,14 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
     return (
         <VolunteerShell active="dashboard" title="Dashboard">
 
-            <SetupNotice />
             {isPhone ? (
                 <>
                     <SetupStatus compact />
                     <PhoneClockCard activities={todayActivities} attendanceFor={attendanceFor} onStart={(activity, mode) => setActiveCapture({ activityId: activity.id, mode })} />
                 </>
-            ) : (
-                <SetupStatus />
-            )}
+            ) : (<SetupStatus compact />)}
+
+            {!isPhone && <TimedInCard activities={todayActivities} attendanceFor={attendanceFor} onStart={(activity, mode) => setActiveCapture({ activityId: activity.id, mode })} />}
 
             {isMobile && (
                 <div role="tablist" style={{ display: 'flex', width: 'fit-content', gap: '2px', background: '#f3f3f4', borderRadius: '999px', padding: '2px', marginBottom: '12px' }}>
@@ -69,8 +68,8 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                     ))}
                 </div>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 280px', gap: '12px', marginBottom: '20px', alignItems: 'start' }}>
-                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: (isMobile && mobileTab !== 'today') ? 'none' : 'block' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 280px', gap: '12px', marginBottom: '20px', alignItems: 'stretch' }}>
+                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: (isMobile && mobileTab !== 'today') ? 'none' : 'flex', flexDirection: 'column' }}>
                     <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Today's Tasks</span>
                         <span style={{ fontSize: '10px', color: '#bbb', background: '#f5f5f5', padding: '2px 8px', borderRadius: '10px' }}>
@@ -113,18 +112,6 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>
-                                                    {isPhone ? (
-                                                        /* phone: start time only */
-                                                        act.start_time ? (() => { const [hh, mi] = act.start_time.split(':'); const h24 = Number(hh); return `${((h24 + 11) % 12) + 1}:${mi} ${h24 >= 12 ? 'PM' : 'AM'}`; })() : ''
-                                                    ) : (
-                                                        <>
-                                                            {new Date(act.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-                                                            {act.start_time ? ` · ${act.start_time.substring(0, 5)}` : ''}
-                                                            {act.location_name ? ` · ${act.location_name}` : ''}
-                                                        </>
-                                                    )}
-                                                </div>
                                             </div>
                                         </div>
                                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
@@ -154,14 +141,14 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                         })
                     )}
                     {/* Footer "View All" — goes to the Schedule page (Assigned tab, default) */}
-                    <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
+                    <div style={{ marginTop: 'auto', padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
                         <Link href={route('volunteer.schedule')} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
                             View All
                         </Link>
                     </div>
                 </div>
 
-                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: (isMobile && mobileTab !== 'upcoming') ? 'none' : 'block' }}>
+                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: (isMobile && mobileTab !== 'upcoming') ? 'none' : 'flex', flexDirection: 'column' }}>
                     <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
                         <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Upcoming</span>
                     </div>
@@ -210,7 +197,7 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                         </div>
                     )}
                     {/* Footer "View All" — goes to the Schedule page, landing directly on the Upcoming tab */}
-                    <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
+                    <div style={{ marginTop: 'auto', padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
                         <Link href={route('volunteer.schedule', { tab: 'upcoming' })} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
                             View All
                         </Link>
@@ -304,7 +291,7 @@ function PhoneClockCard({ activities, attendanceFor, onStart }) {
     }, [timedIn]);
 
     const DASH = '\u2014';
-    const card = { background: 'white', borderRadius: '14px', border: '1px solid #ebebeb', padding: '16px', marginBottom: '12px' };
+    const card = { background: 'white', borderRadius: '12px', border: '1px solid #ebebeb', padding: '16px', marginBottom: '12px' };
     const dateText = new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' });
 
     const dateRow = (
@@ -426,6 +413,28 @@ function PhoneClockCard({ activities, attendanceFor, onStart }) {
     );
 }
 
+function TimedInCard({ activities, attendanceFor, onStart }) {
+    const { setup } = useVolunteerShell();
+    const act = (activities || []).find((a) => { const r = attendanceFor(a); return !!r?.time_in && !r?.time_out; });
+    if (!act) return null;
+    const rec = attendanceFor(act);
+    return (
+        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '16px' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Time In / Time Out</span>
+            </div>
+            <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                <div style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '15px', fontWeight: '600', color: '#111' }}>{act.name}</div>
+                    <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
+                </div>
+                <RingClockButton mode="checkout" isOngoing={true} record={rec} activity={act} canProceed={true} onPress={() => { if (setup.face_done) onStart(act, 'checkout'); }} />
+                <RunningTimer record={rec} activity={act} />
+            </div>
+        </div>
+    );
+}
+
 function TaskAttendanceButton({ act, record, onStart }) {
     const { setup } = useVolunteerShell();
     const faceReady = !!setup.face_done;
@@ -470,7 +479,7 @@ function TaskAttendanceButton({ act, record, onStart }) {
 }
 
 function recordToActivity(rec) {
-    if (rec.activity) return rec.activity;
+    if (rec.activity) return { ...rec.activity, attendance_method: rec.attendance_method };
     return {
         date: rec.date,
         name: rec.activity_name,
@@ -478,6 +487,7 @@ function recordToActivity(rec) {
         end_time: rec.activity_end_time,
         location_name: rec.location_name,
         assignment: rec.assignment,
+        attendance_method: rec.attendance_method,
         description: rec.description,
         assigned_by_role: rec.assigned_by_role,
         assigned_by_name: rec.assigned_by_name,
@@ -633,14 +643,14 @@ function ActivityDetails({ act }) {
 
     const assignedBy = act.assigned_by_name
         ? `${act.assigned_by_role ? `${act.assigned_by_role} / ` : ''}${act.assigned_by_name}`
-        : null;
+        : (act.assigned_by || null);
 
     const fields = [
         { icon: <CalendarIcon />, label: 'Date', value: act.date ? new Date(act.date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '—' },
         { icon: <ClockIcon />, label: 'Time', value: formatTimeRange() },
         { icon: <PinIcon />, label: 'Location', value: act.location_name },
-        { icon: <ClipboardIcon />, label: 'Assignment', value: act.assignment || 'No assignment specified.' },
-        { icon: <TextIcon />, label: 'Description', value: act.description || 'No description provided.' },
+        { icon: <ClipboardIcon />, label: 'Assignment', value: act.description || act.assignment || 'No assignment specified.' },
+        { icon: <ClipboardIcon />, label: 'Attendance Method', value: act.attendance_method === 'fingerprint' ? 'Fingerprint' : (act.attendance_method === 'face' || act.attendance_method === 'face_recognition' ? 'Face Recognition' : (act.attendance_method ? act.attendance_method : null)) },
         ...(assignedBy ? [{ icon: <UserIcon />, label: 'Assigned By', value: assignedBy }] : []),
     ];
 
@@ -746,57 +756,45 @@ function SetupStatus({ compact = false }) {
     const { profile_completed: profileDone, face_done: faceDone, face_needed: faceNeeded, face_pending: facePending } = setup;
 
     const isMobile = useIsMobile();
-    const [rcOpen, setRcOpen] = useState(false);
+    const [rcOpen, setRcOpen] = useState(!isMobile);
     if (profileDone && faceDone) return null;
 
-    if (isMobile) {
+    if (isMobile || compact) {
         const doneCount = (profileDone ? 1 : 0) + (faceDone ? 1 : 0);
         if (compact) {
-            const btnStyle = { fontSize: '12px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '8px', padding: '8px 14px', textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 };
-            const stepRow = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', minHeight: '34px' };
-            const stepLabel = { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', minWidth: 0 };
-            const iconDone = (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3B6D11" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
-            );
-            const iconTodo = (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /></svg>
-            );
-            const iconWait = (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><polyline points="12 7 12 12 15 14" /></svg>
-            );
-            const toggleFold = () => setRcOpen(o => !o);
+            const startStyle = { fontSize: '12px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '8px', padding: '9px 18px', textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0, textAlign: 'center', boxSizing: 'border-box', ...(isMobile ? { width: '100%' } : {}) };
+            const badgeStyle = { display: 'inline-block', fontSize: '11px', fontWeight: '700', color: '#CC0000', background: 'white', border: '1px solid #f5c6c6', borderRadius: '10px', padding: '1px 9px', marginBottom: '4px' };
+            let title;
+            let sub;
+            let action = null;
+            let badge = null;
+            if (!profileDone) {
+                title = 'Complete your profile';
+                sub = faceDone ? 'Takes about 2 minutes.' : 'Takes about 2 minutes. Face registration comes next.';
+                if (!faceDone) badge = '2 steps left';
+                action = <Link href={safeRoute('volunteer.profile')} style={startStyle}>Start</Link>;
+            } else if (facePending) {
+                title = 'Face registration submitted';
+                sub = 'Waiting for admin approval.';
+            } else {
+                const rejected = setup.face_status === 'rejected';
+                title = rejected ? 'Register your face again' : 'Register your face';
+                sub = rejected ? 'Your last scan was not approved.' : 'Needed for Time In and Time Out.';
+                if (faceNeeded) action = <button type="button" onClick={openFace} style={startStyle}>Start</button>;
+            }
             return (
-                <div data-rc-fold="1" data-rc-setup-steps="1" style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', marginBottom: '12px', overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 6px 2px 14px', minHeight: '38px' }}>
-                        <button type="button" aria-expanded={rcOpen} onClick={toggleFold} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: '8px 0', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                            <span style={{ fontSize: '13px', fontWeight: '600', color: '#111', whiteSpace: 'nowrap' }}>Finish setting up</span>
-                            <span style={{ fontSize: '12px', color: '#92400e', whiteSpace: 'nowrap' }}>{doneCount} of 2</span>
-                        </button>
-                        <button type="button" aria-label={rcOpen ? 'Fold setup steps' : 'Show setup steps'} aria-expanded={rcOpen} onClick={toggleFold} style={{ width: '32px', height: '32px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points={rcOpen ? '6 15 12 9 18 15' : '6 9 12 15 18 9'} /></svg>
-                        </button>
+                <div role="region" aria-label="Finish setting up" style={{ background: '#fff5f5', border: '1px solid #f5c6c6', borderLeft: '4px solid #CC0000', borderRadius: '12px', marginBottom: '12px', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0, flex: '1 1 180px' }}>
+                        {badge && <span style={badgeStyle}>{badge}</span>}
+                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#111' }}>{title}</div>
+                        <div style={{ fontSize: '12px', color: '#777', marginTop: '2px' }}>{sub}</div>
                     </div>
-                    {rcOpen && (
-                        <div style={{ padding: '0 14px 12px' }}>
-                            <div style={{ height: '4px', background: '#fde68a', borderRadius: '2px', margin: '0 0 10px' }}>
-                                <div style={{ width: (doneCount * 50) + '%', height: '4px', background: '#CC0000', borderRadius: '2px' }} />
-                            </div>
-                            <div style={stepRow}>
-                                <span style={{ ...stepLabel, color: profileDone ? '#3B6D11' : '#111' }}>{profileDone ? iconDone : iconTodo}Complete your profile</span>
-                                {!profileDone && <Link href={safeRoute('volunteer.profile')} style={btnStyle}>Complete</Link>}
-                            </div>
-                            <div style={{ ...stepRow, marginTop: '6px' }}>
-                                <span style={{ ...stepLabel, color: faceDone ? '#3B6D11' : (profileDone ? '#111' : '#999') }}>{faceDone ? iconDone : (facePending ? iconWait : iconTodo)}Register your face</span>
-                                {!faceDone && facePending && <span style={{ fontSize: '12px', color: '#92400e', whiteSpace: 'nowrap' }}>Waiting for approval</span>}
-                                {!faceDone && !facePending && profileDone && faceNeeded && <button type="button" onClick={openFace} style={btnStyle}>Register</button>}
-                            </div>
-                        </div>
-                    )}
+                    {action}
                 </div>
             );
         }
         const mRow = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '12px 16px', borderTop: '1px solid #f5f5f5' };
-        const mBtn = { fontSize: '11px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 };
+        const mBtn = { fontSize: '11px', fontWeight: '600', color: '#333', background: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '9px 14px', cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 };
         return (
             <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '12px' }}>
                 <div style={{ padding: '14px 16px 12px' }}>
@@ -831,7 +829,7 @@ function SetupStatus({ compact = false }) {
 
     const rowStyle = { padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' };
     const smallBtn = {
-        fontSize: '10px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none',
+        fontSize: '10px', fontWeight: '600', color: '#333', background: 'white', border: '1px solid #e0e0e0',
         borderRadius: '5px', padding: '5px 12px', cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit', whiteSpace: 'nowrap',
     };
 
