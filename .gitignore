@@ -34,3 +34,4 @@ Thumbs.db
 *.old
 *.orig
 /backup_public_pages/
+*.undo-*
