@@ -129,7 +129,7 @@ export default function VolunteerDocuments({ auth, documents }) {
                     <div style={{ padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '10px', padding: '0 4px' }}>
                             <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600', flexShrink: 0 }}>
-                                {volunteer?.name?.charAt(0).toUpperCase()}
+                                {volunteer?.photo ? <img src={'/storage/' + volunteer.photo} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} /> : volunteer?.name?.charAt(0).toUpperCase()}
                             </div>
                             <div style={{ overflow: 'hidden' }}>
                                 <div style={{ fontSize: '11px', fontWeight: '500', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{volunteer?.name}</div>
@@ -175,7 +175,7 @@ export default function VolunteerDocuments({ auth, documents }) {
                                 Upload Document
                             </button>
                             <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600' }}>
-                                {volunteer?.name?.charAt(0).toUpperCase()}
+                                {volunteer?.photo ? <img src={'/storage/' + volunteer.photo} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} /> : volunteer?.name?.charAt(0).toUpperCase()}
                             </div>
                         </div>
                     </header>

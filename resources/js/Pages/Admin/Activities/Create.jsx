@@ -1,3 +1,4 @@
+import LocationPicker from '../../../Components/LocationPicker';
 import { Link, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import AdminShell from '../../../Components/AdminShell';
@@ -53,7 +54,8 @@ const STEP_1_FIELDS = ['type'];
 const STEP_2_FIELDS = ['name', 'date', 'start_time', 'end_time', 'description', 'assigned_by', 'status'];
 const STEP_3_FIELDS = ['location_name', 'latitude', 'longitude', 'radius_meters'];
 
-const card = { background: 'white', border: '1px solid #ececec', borderLeft: '4px solid #A32D2D', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.06)', borderRadius: '12px', padding: '24px' };
+const card = { background: 'white', border: '1px solid #ececec', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.06)', borderRadius: '14px', overflow: 'hidden' };
+const cardBody = { padding: '24px' };
 const inputStyle = {
     width: '100%', padding: '10px 12px', border: '1px solid #ebebeb', borderRadius: '10px',
     fontSize: '13px', fontFamily: 'inherit', color: '#222', boxSizing: 'border-box', background: '#fafafa',
@@ -96,8 +98,11 @@ export default function Create({ volunteers, defaultType = 'field', existingName
         startsAsBranch && hasBranchCoords ? { ok: true, message: BRANCH.address } : null
     );
     const [volunteerFilter, setVolunteerFilter] = useState('');
+    const [pinCoord, setPinCoord] = useState('');
+    const [nameEdited, setNameEdited] = useState(false);
 
     const locationConfirmed = !!(data.latitude && data.longitude);
+    const pinLocked = !!pinCoord && pinCoord === data.latitude;
     const isBranch = data.type === 'branch';
 
     // The existing activity that has the same name as what is typed (null if none)
@@ -193,7 +198,98 @@ export default function Create({ volunteers, defaultType = 'field', existingName
         setData('volunteer_ids', current.includes(id) ? current.filter((v) => v !== id) : [...current, id]);
     };
 
+    const [suggestions, setSuggestions] = useState([]);
+
+    const fetchSuggestions = (value) => {
+        clearTimeout(window.__locSuggestTimer);
+        const seq = (window.__locSuggestSeq = (window.__locSuggestSeq || 0) + 1);
+        const q = cleanQuery(value);
+        if (q.length < 2) { setSuggestions([]); return; }
+        window.__locSuggestTimer = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=ph&viewbox=120.95,14.50,121.12,14.28`);
+                const results = await res.json();
+                if (seq !== window.__locSuggestSeq) return;
+                setSuggestions(Array.isArray(results) ? results : []);
+            } catch {
+                if (seq === window.__locSuggestSeq) setSuggestions([]);
+            }
+        }, 600);
+    };
+
+    const pickSuggestion = (s) => {
+        clearTimeout(window.__locSuggestTimer);
+        window.__locSuggestSeq = (window.__locSuggestSeq || 0) + 1;
+        setData((prev) => ({
+            ...prev,
+            location_name: s.display_name,
+            latitude: parseFloat(s.lat).toFixed(8),
+            longitude: parseFloat(s.lon).toFixed(8),
+        }));
+        setSuggestions([]);
+        setLocationStatus({ ok: true, message: s.display_name });
+        setNameEdited(false);
+        if (typeof clearErrors === 'function') clearErrors('location_name');
+    };
+
+    const handlePinPick = async (pinLat, pinLon) => {
+        const seq = (window.__pinSeq = (window.__pinSeq || 0) + 1);
+        const latStr = Number(pinLat).toFixed(8);
+        const lonStr = Number(pinLon).toFixed(8);
+        setPinCoord(latStr);
+        setNameEdited(false);
+        setData((prev) => ({ ...prev, latitude: latStr, longitude: lonStr }));
+        setSearchLoading(true);
+        let placeName = `Pinned location (${Number(pinLat).toFixed(5)}, ${Number(pinLon).toFixed(5)})`;
+        try {
+            const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pinLat}&lon=${pinLon}&format=json&zoom=18`);
+            const info = await rev.json();
+            if (info && info.display_name) placeName = info.display_name;
+        } catch {}
+        if (seq !== window.__pinSeq) return;
+        setData((prev) => ({ ...prev, location_name: placeName, latitude: latStr, longitude: lonStr }));
+        setLocationStatus({ ok: true, message: placeName });
+        if (typeof clearErrors === 'function') clearErrors('location_name');
+        setSearchLoading(false);
+    };
+
+    const cleanQuery = (s) => String(s || '')
+        .replace(/\b(brgy|bgy|brg)\b\.?\s*/gi, 'Barangay ')
+        .replace(/\s+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/[.,\s]+$/, '')
+        .trim();
+
+    const searchPlace = async (text, exactOnly) => {
+        const base = cleanQuery(text)
+            .replace(/,?\s*(Philippines|Pilipinas)\b/gi, '')
+            .replace(/,?\s*(Metro Manila|National Capital Region|NCR|Southern Manila District)\b/gi, '')
+            .replace(/[.,\s]+$/, '')
+            .trim();
+        const parts = base.split(',').map((p) => p.trim()).filter(Boolean);
+        const tries = [];
+        for (let i = 0; i < parts.length; i++) {
+            if (i > 0 && parts.length - i < 2) break;
+            tries.push(parts.slice(i).join(', '));
+        }
+        if (tries.length === 0) tries.push(base);
+        if (exactOnly) tries.length = Math.min(tries.length, 1);
+        for (let i = 0; i < tries.length; i++) {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(tries[i])}&format=json&limit=1&countrycodes=ph&viewbox=120.95,14.50,121.12,14.28`);
+            const results = await res.json();
+            if (Array.isArray(results) && results.length > 0) return { result: results[0], exact: i === 0 };
+            if (i < tries.length - 1) await new Promise((r) => setTimeout(r, 1100));
+        }
+        return null;
+    };
+
     const handleLocationNameChange = (value) => {
+        if (pinLocked && data.latitude && data.longitude) {
+            setNameEdited(true);
+            setData((prev) => ({ ...prev, location_name: value }));
+            setLocationStatus({ ok: true, message: value });
+            return;
+        }
         setData((prev) => ({ ...prev, location_name: value, latitude: '', longitude: '' }));
         setLocationStatus(null);
     };
@@ -249,7 +345,18 @@ export default function Create({ volunteers, defaultType = 'field', existingName
         else applyFieldLocation();
     };
 
+    const pickType = (value) => {
+        if (value !== data.type) handleTypeClick(value);
+        setStepError('');
+        setStep(2);
+        scrollTop();
+    };
+
     const confirmLocation = async () => {
+        if (data.latitude && data.longitude && data.location_name.trim() && !nameEdited) {
+            setLocationStatus({ ok: true, message: data.location_name });
+            return;
+        }
         if (!data.location_name.trim()) {
             setLocationStatus({ ok: false, message: 'Type a location first.' });
             return;
@@ -257,18 +364,20 @@ export default function Create({ volunteers, defaultType = 'field', existingName
         setSearchLoading(true);
         setLocationStatus(null);
         try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(data.location_name)}&format=json&limit=1`);
+            const found = await searchPlace(data.location_name, nameEdited);
+            const res = { json: async () => (found ? [found.result] : []) };
             const results = await res.json();
             if (results.length > 0) {
                 const resolved = results[0].display_name;
+                setNameEdited(false);
                 setData((prev) => ({
                     ...prev,
                     latitude: parseFloat(results[0].lat).toFixed(8),
                     longitude: parseFloat(results[0].lon).toFixed(8),
                 }));
-                setLocationStatus({ ok: true, message: resolved });
+                setLocationStatus({ ok: true, message: found && !found.exact ? ('Exact place not found, so the pin is near: ' + resolved + '. Drag the pin to the exact spot.') : resolved });
             } else {
-                setLocationStatus({ ok: false, message: "Couldn't find that place \u2014 try adding a barangay or city." });
+                setLocationStatus(nameEdited ? { ok: true, message: data.location_name } : { ok: false, message: "Couldn't find that place \u2014 try adding a barangay or city." });
             }
         } catch {
             setLocationStatus({ ok: false, message: 'Search failed. Check your connection and try again.' });
@@ -280,19 +389,27 @@ export default function Create({ volunteers, defaultType = 'field', existingName
         setSearchLoading(true);
         setLocationStatus(null);
         navigator.geolocation.getCurrentPosition(
-            (pos) => {
+            async (pos) => {
+                let placeName = `Current location (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`;
+                try {
+                    const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`);
+                    const info = await rev.json();
+                    if (info && info.display_name) placeName = info.display_name;
+                } catch {}
+                if (typeof clearErrors === 'function') clearErrors('location_name');
                 setData((prev) => ({
                     ...prev,
+                    location_name: placeName,
                     latitude: pos.coords.latitude.toFixed(8),
                     longitude: pos.coords.longitude.toFixed(8),
                 }));
-                setLocationStatus({ ok: true, message: 'Using your current location as the activity site.' });
+                setLocationStatus({ ok: true, message: placeName + ' (about ' + Math.round(pos.coords.accuracy) + ' m accuracy)' });
                 setSearchLoading(false);
             },
             () => {
                 setLocationStatus({ ok: false, message: 'Could not detect your location. Try typing the address instead.' });
                 setSearchLoading(false);
-            }
+            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     };
 
@@ -328,7 +445,7 @@ export default function Create({ volunteers, defaultType = 'field', existingName
     );
 
     return (
-        <AdminShell active="activities" title="Create Activity">
+        <AdminShell active="activities" title="Activities">
             <style>{`
 .act-primary-btn, .act-ghost-btn { border-radius: 9px !important; }
 .act-ghost-btn { background: #fff !important; border: 1px solid #e5e5e5 !important; }
@@ -336,7 +453,8 @@ export default function Create({ volunteers, defaultType = 'field', existingName
                 .act-primary-btn:hover { background: #aa0000 !important; }
                 .act-ghost-btn:hover { background: #f0f0f0 !important; }
                 .act-vol-row:hover { background: #fafafa; }
-                .act-type-btn:hover { border-color: #CC0000 !important; }
+                .act-type-btn:hover, .act-type-btn:focus-visible { background: #f3f3f3 !important; border-color: #d4d4d4 !important; outline: none; }
+                .act-type-btn:hover .act-type-title, .act-type-btn:focus-visible .act-type-title, .act-type-btn:hover .act-type-icon, .act-type-btn:focus-visible .act-type-icon { color: #C62828 !important; }
                 .act-step-btn:hover .act-step-dot { border-color: #CC0000 !important; }
                 @media (max-width: 600px) {
                     .act-step-label { display: none; }
@@ -345,163 +463,232 @@ export default function Create({ volunteers, defaultType = 'field', existingName
 
             <div style={{ maxWidth: '780px', margin: '0 auto' }}>
 
-                <div style={{ marginBottom: '20px' }}>
-                    <Link href={route('admin.activities.index')} style={{ fontSize: '12.5px', color: '#999', textDecoration: 'none' }}>
-                        &larr; Back to Activities
-                    </Link>
-                </div>
-
-                {/* Stepper */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <form onSubmit={handleSubmit}>
+                    <div style={card}>
+                    {/* Breadcrumb */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 24px', borderBottom: '1px solid #ececec' }}>
+                        <Link
+                            href={route('admin.activities.index')}
+                            aria-label="Back to Activities"
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#CC0000'; e.currentTarget.style.borderColor = '#CC0000'; e.currentTarget.style.color = '#fff'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#ddd'; e.currentTarget.style.color = '#666'; }}
+                            style={{
+                                width: '26px', height: '26px', borderRadius: '50%', border: '1px solid #ddd', background: '#fff',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666',
+                                textDecoration: 'none', fontSize: '14px', lineHeight: 1,
+                            }}
+                        >
+                            &larr;
+                        </Link>
+                        <Link
+                            href={route('admin.activities.index')}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = '#CC0000'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#666', textDecoration: 'none' }}
+                        >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18" />
+                            </svg>
+                            Activities
+                        </Link>
+                        <span style={{ fontSize: '13px', color: '#bbb' }}>&rsaquo;</span>
+                        <span style={{ fontSize: '12.5px', fontWeight: '600', color: '#7a8ba3' }}>Create Activity</span>
+                    </div>
+                        <div style={{ padding: '12px 24px', borderBottom: '1px solid #ececec' }}>
+{/* Stepper */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {STEPS.map((label, i) => {
                         const n = i + 1;
                         const done = n < step;
                         const current = n === step;
                         return (
-                            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: n === STEPS.length ? '0 0 auto' : 1 }}>
+                            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: n === STEPS.length ? '0 0 auto' : 1 }}>
                                 <button
                                     type="button"
                                     onClick={() => goToStep(n)}
                                     className="act-step-btn"
                                     disabled={!done}
                                     style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none',
+                                        display: 'flex', alignItems: 'center', gap: '7px', background: 'none', border: 'none',
                                         padding: 0, cursor: done ? 'pointer' : 'default', fontFamily: 'inherit',
                                     }}
                                 >
                                     <span className="act-step-dot" style={{
-                                        width: '26px', height: '26px', borderRadius: '50%', display: 'flex',
-                                        alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700',
-                                        background: current ? '#CC0000' : done ? '#fff5f5' : '#fafafa', boxShadow: current ? '0 0 0 4px #fbeaea' : 'none',
-                                        color: current ? 'white' : done ? '#CC0000' : '#999',
-                                        border: current ? '1.5px solid #CC0000' : done ? '1.5px solid #CC0000' : '1px solid #ddd',
+                                        width: '22px', height: '22px', borderRadius: '50%', display: 'flex',
+                                        alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '600',
+                                        background: current ? '#7a8ba3' : done ? '#f0fdf4' : '#f1f5f9', boxShadow: 'none',
+                                        color: current ? 'white' : done ? '#16a34a' : '#64748b',
+                                        border: current ? '1px solid #7a8ba3' : done ? '1.5px solid #16a34a' : '1px solid #cbd5e1',
                                     }}>
                                         {done ? '\u2713' : n}
                                     </span>
                                     <span className="act-step-label" style={{
-                                        fontSize: '12.5px', fontWeight: current ? '700' : '500',
+                                        fontSize: '12px', fontWeight: current ? '600' : '500',
                                         color: current ? '#222' : '#999', whiteSpace: 'nowrap',
                                     }}>
                                         {label}
                                     </span>
                                 </button>
                                 {n < STEPS.length && (
-                                    <div style={{ flex: 1, height: '2px', background: done ? '#CC0000' : '#f0cccc' }} />
+                                    <div style={{ flex: 1, height: '1px', background: done ? '#16a34a' : '#cbd5e1' }} />
                                 )}
                             </div>
                         );
                     })}
                 </div>
-
-                <form onSubmit={handleSubmit}>
-                    <div style={card}>
+                        </div>
+                        <div key={step} style={{ ...cardBody, overflowY: 'auto', maxHeight: 'max(380px, calc(100vh - 220px))' }}>
 
                         {/* STEP 1: Type */}
                         {step === 1 && (
                             <>
                                 <div style={sectionTitle}>Step 1 &middot; What kind of activity?</div>
+                                <p style={{ fontSize: '12px', color: '#888', margin: '-6px 0 16px' }}>Tap one to continue.</p>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
-                                    {TYPE_OPTIONS.map((opt) => {
-                                        const active = data.type === opt.value;
-                                        return (
-                                            <button
-                                                key={opt.value}
-                                                type="button"
-                                                onClick={() => handleTypeClick(opt.value)}
-                                                className="act-type-btn"
-                                                aria-pressed={active}
-                                                style={{
-                                                    textAlign: 'left', padding: '16px', borderRadius: '10px', cursor: 'pointer', display: 'flex', gap: '12px', alignItems: 'flex-start', position: 'relative',
-                                                    fontFamily: 'inherit',
-                                                    border: active ? '1.5px solid #CC0000' : '1px solid #ebebeb',
-                                                    background: active ? '#fff5f5' : '#fff',
-                                                }}
-                                            >
-                                                <span style={{ width: '34px', height: '34px', borderRadius: '8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: active ? '#CC0000' : '#f3f3f4', color: active ? '#fff' : '#777' }}>
-{opt.value === 'field' ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>) : (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4" /></svg>)}
-</span>
-<div style={{ minWidth: 0 }}>
-<div style={{ fontSize: '14px', fontWeight: '700', color: active ? '#A32D2D' : '#222', marginBottom: '6px' }}>
-                                                    {opt.label}
-                                                </div>
+                                    {TYPE_OPTIONS.map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => pickType(opt.value)}
+                                            className="act-type-btn"
+                                            style={{
+                                                textAlign: 'left', padding: '18px 16px', borderRadius: '12px', cursor: 'pointer',
+                                                display: 'flex', gap: '12px', alignItems: 'flex-start', fontFamily: 'inherit',
+                                                border: '1px solid #ebebeb', background: '#fff',
+                                            }}
+                                        >
+                                            <span className="act-type-icon" style={{ flexShrink: 0, marginTop: '1px', color: '#777', display: 'flex' }}>
+                                                {opt.value === 'field' ? (
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                                                ) : (
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4" /></svg>
+                                                )}
+                                            </span>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div className="act-type-title" style={{ fontSize: '14px', fontWeight: '600', color: '#222', marginBottom: '4px' }}>{opt.label}</div>
                                                 <div style={{ fontSize: '12px', color: '#777', lineHeight: 1.5 }}>{opt.hint}</div>
-</div>
-{active && <span style={{ position: 'absolute', top: '10px', right: '12px', color: '#CC0000', fontSize: '15px', fontWeight: '700' }}>&#10003;</span>}
-                                            </button>
-                                        );
-                                    })}
+                                            </div>
+                                        </button>
+                                    ))}
                                 </div>
                                 {errors.type && <p style={errorStyle}>{errors.type}</p>}
                             </>
                         )}
 
-                        {/* STEP 2: Details */}
-                        {step === 2 && (
-                            <>
-                                <div style={sectionTitle}>Step 2 &middot; Activity details</div>
-                                <div style={{ display: 'grid', gap: '16px' }}>
+                        {/* STEP 2: Details (two columns) */}
+                        {step === 2 && (() => {
+                            const card = { border: '1px solid #ebebeb', borderRadius: '12px', padding: '14px 16px', background: '#fff' };
+                            const head = { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', fontWeight: '600', color: '#444', marginBottom: '12px' };
+                            const hint = { fontSize: '11.5px', color: '#888', margin: 0 };
+                            const ico = (d) => (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#777" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+                            );
+                            const toMin = (t) => {
+                                if (!t) return null;
+                                const p = String(t).split(':').map(Number);
+                                return p[0] * 60 + (p[1] || 0);
+                            };
+                            const sm = toMin(data.start_time);
+                            const em = toMin(data.end_time);
+                            let durationText = null;
+                            let durationBad = false;
+                            if (sm !== null && em !== null) {
+                                const diff = em - sm;
+                                if (diff > 0) {
+                                    const h = Math.floor(diff / 60);
+                                    const m = diff % 60;
+                                    durationText = [h ? h + (h > 1 ? ' hours' : ' hour') : '', m ? m + ' min' : ''].filter(Boolean).join(' ');
+                                } else {
+                                    durationBad = true;
+                                }
+                            }
+                            const nameLen = (data.name || '').length;
+                            const descLen = (data.description || '').length;
 
-                                    <div>
-                                        <label style={labelStyle}>Activity Name *</label>
-                                        <input
-                                            className="act-input"
-                                            type="text"
-                                            value={data.name}
-                                            onChange={(e) => handleNameChange(e.target.value)}
-                                            style={{ ...inputStyle, ...(duplicateName || errors.name ? { borderColor: '#CC0000' } : {}) }}
-                                            placeholder="e.g. Flood Relief &ndash; Bulacan"
-                                        />
-                                        {duplicateName ? (
-                                            <p style={errorStyle}>{dupMessage(duplicateName)}</p>
-                                        ) : (
-                                            errors.name && <p style={errorStyle}>{errors.name}</p>
-                                        )}
-                                    </div>
+                            return (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '14px', alignItems: 'stretch' }}>
 
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
-                                        <div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+                                        <div style={card}>
+                                            <div style={head}>{ico('M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6')}Basic info</div>
+                                            <label style={labelStyle}>Activity name *</label>
+                                            <input
+                                                className="act-input"
+                                                type="text"
+                                                maxLength={80}
+                                                value={data.name}
+                                                onChange={(e) => handleNameChange(e.target.value)}
+                                                style={{ ...inputStyle, ...(duplicateName || errors.name ? { borderColor: '#CC0000' } : {}) }}
+                                                placeholder="e.g. Flood Relief &ndash; Bulacan"
+                                            />
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '6px' }}>
+                                                {duplicateName ? (
+                                                    <p style={{ ...errorStyle, margin: 0 }}>{dupMessage(duplicateName)}</p>
+                                                ) : errors.name ? (
+                                                    <p style={{ ...errorStyle, margin: 0 }}>{errors.name}</p>
+                                                ) : (
+                                                    <p style={hint}>Use a clear name volunteers will recognize.</p>
+                                                )}
+                                                <span style={{ ...hint, whiteSpace: 'nowrap' }}>{nameLen} / 80</span>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ ...card, flex: 1 }}>
+                                            <div style={head}>{ico('M3 5h18v16H3zM3 10h18M8 3v4M16 3v4')}Schedule</div>
                                             <label style={labelStyle}>Date *</label>
                                             <input className="act-input" type="date" value={data.date} onChange={(e) => setData('date', e.target.value)} style={inputStyle} />
                                             {errors.date && <p style={errorStyle}>{errors.date}</p>}
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                                                <div>
+                                                    <label style={labelStyle}>Start time *</label>
+                                                    <input className="act-input" type="time" value={data.start_time} onChange={(e) => setData('start_time', e.target.value)} style={inputStyle} />
+                                                    {errors.start_time && <p style={errorStyle}>{errors.start_time}</p>}
+                                                </div>
+                                                <div>
+                                                    <label style={labelStyle}>End time *</label>
+                                                    <input className="act-input" type="time" value={data.end_time} onChange={(e) => setData('end_time', e.target.value)} style={inputStyle} />
+                                                    {errors.end_time && <p style={errorStyle}>{errors.end_time}</p>}
+                                                </div>
+                                            </div>
+                                            {durationText && (
+                                                <span style={{ display: 'inline-block', marginTop: '10px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '3px 9px', fontSize: '11.5px', fontWeight: '600' }}>Duration: {durationText}</span>
+                                            )}
+                                            {durationBad && (
+                                                <span style={{ display: 'inline-block', marginTop: '10px', background: '#fef2f2', color: '#CC0000', border: '1px solid #fecaca', borderRadius: '6px', padding: '3px 9px', fontSize: '11.5px', fontWeight: '600' }}>End time must be after start time</span>
+                                            )}
                                         </div>
-                                        <div>
-                                            <label style={labelStyle}>Status</label>
-                                            <select className="act-input" value={data.status} onChange={(e) => setData('status', e.target.value)} style={inputStyle}>
-                                                <option value="upcoming">Upcoming</option>
-                                                <option value="ongoing">Ongoing</option>
-                                                <option value="completed">Completed</option>
-                                                <option value="cancelled">Cancelled</option>
-                                            </select>
-                                        </div>
+
                                     </div>
 
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
-                                        <div>
-                                            <label style={labelStyle}>Start Time *</label>
-                                            <input className="act-input" type="time" value={data.start_time} onChange={(e) => setData('start_time', e.target.value)} style={inputStyle} />
-                                            {errors.start_time && <p style={errorStyle}>{errors.start_time}</p>}
+                                    <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
+                                        <div style={head}>{ico('M9 3h6v4H9zM6 5H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1')}Assignment</div>
+                                        <label style={labelStyle}>What will volunteers do?</label>
+                                        <textarea
+                                            className="act-input"
+                                            maxLength={500}
+                                            value={data.description}
+                                            onChange={(e) => setData('description', e.target.value)}
+                                            style={{ ...inputStyle, flex: 1, minHeight: '150px', height: 'auto', resize: 'none' }}
+                                            placeholder="Describe the tasks, what to bring, and who to report to."
+                                        />
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '6px' }}>
+                                            <p style={hint}>Optional, but it helps volunteers decide if they can join.</p>
+                                            <span style={{ ...hint, whiteSpace: 'nowrap' }}>{descLen} / 500</span>
                                         </div>
-                                        <div>
-                                            <label style={labelStyle}>End Time *</label>
-                                            <input className="act-input" type="time" value={data.end_time} onChange={(e) => setData('end_time', e.target.value)} style={inputStyle} />
-                                            {errors.end_time && <p style={errorStyle}>{errors.end_time}</p>}
+
+                                        <label style={{ ...labelStyle, marginTop: '14px', display: 'block' }}>Assigned by</label>
+                                        <div style={{ ...inputStyle, background: '#f3f3f3', color: '#444', cursor: 'not-allowed', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {ico('M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4')}
+                                            <span style={{ flex: 1 }}>{assignedByName || 'Current profile'}</span>
+                                            <span style={{ fontSize: '11px', color: '#999' }}>Auto-filled</span>
                                         </div>
-                                    </div>
-
-                                    <div>
-                                        <label style={labelStyle}>Assignment</label>
-                                        <textarea className="act-input" value={data.description} onChange={(e) => setData('description', e.target.value)} style={{ ...inputStyle, height: '80px', resize: 'vertical' }} placeholder="What will volunteers do?" />
-                                    </div>
-
-                                    <div>
-                                        <label style={labelStyle}>Assigned By</label>
-                                        <div style={{ ...inputStyle, background: '#f3f3f3', color: '#444', cursor: 'not-allowed' }}>{assignedByName || 'Current profile'}</div>
                                         {errors.assigned_by && <p style={errorStyle}>{errors.assigned_by}</p>}
                                     </div>
-                                </div>
-                            </>
-                        )}
 
+                                </div>
+                            );
+                        })()}
                         {/* STEP 3: Location */}
                         {step === 3 && (
                             <>
@@ -512,7 +699,7 @@ export default function Create({ volunteers, defaultType = 'field', existingName
                                         className="act-input"
                                         type="text"
                                         value={data.location_name}
-                                        onChange={(e) => handleLocationNameChange(e.target.value)}
+                                        onChange={(e) => { handleLocationNameChange(e.target.value); fetchSuggestions(e.target.value); }}
                                         onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), !isBranch && confirmLocation())}
                                         readOnly={isBranch}
                                         style={{ ...inputStyle, ...(isBranch ? { background: '#f3f3f3', color: '#666', cursor: 'not-allowed' } : {}) }}
@@ -534,7 +721,28 @@ export default function Create({ volunteers, defaultType = 'field', existingName
                                         </button>
                                     )}
                                 </div>
-                                {errors.location_name && <p style={errorStyle}>{errors.location_name}</p>}
+                                {!isBranch && !locationConfirmed && (
+                                    <div style={{ marginTop: '8px', background: '#eff6ff', borderRadius: '8px', padding: '10px 12px', fontSize: '12.5px', lineHeight: 1.5, color: '#1e3a8a' }}>
+                                        <div style={{ fontWeight: 600, marginBottom: '2px' }}>How to find the address</div>
+                                        Type the subdivision or street, then the barangay (Brgy.) and Muntinlupa City. Example: A. Bunye, Brgy. Sucat, Muntinlupa City. Pick a suggestion from the list, or place the pin on the map and type the full name yourself.
+                                    </div>
+                                )}{errors.location_name && <p style={errorStyle}>{errors.location_name}</p>}
+
+                                {suggestions.length > 0 && (
+                                    <div role="listbox" style={{ marginTop: '6px', border: '1px solid #ebebeb', borderRadius: '10px', overflow: 'hidden', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                                        {suggestions.map((s, i) => (
+                                            <button
+                                                key={s.place_id}
+                                                type="button"
+                                                role="option"
+                                                onClick={() => pickSuggestion(s)}
+                                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', background: 'white', border: 'none', borderBottom: i < suggestions.length - 1 ? '1px solid #f1f1f1' : 'none', cursor: 'pointer', fontSize: '12.5px', fontFamily: 'inherit', color: '#333' }}
+                                            >
+                                                {s.display_name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
 
                                 {searchLoading && isBranch && <p style={hintStyle}>Looking up the branch location&hellip;</p>}
 
@@ -548,30 +756,15 @@ export default function Create({ volunteers, defaultType = 'field', existingName
                                     </div>
                                 )}
 
-                                {!isBranch && (
-                                    <div style={{ marginTop: '8px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={useMyLocation}
-                                            disabled={searchLoading}
-                                            className="act-ghost-btn"
-                                            style={{
-                                                padding: '7px 12px', background: '#fafafa', color: '#666', border: '1px solid #ebebeb',
-                                                borderRadius: '8px', cursor: 'pointer', fontSize: '11.5px', fontFamily: 'inherit',
-                                            }}
-                                        >
-                                            {'\u{1F4CD}'} Use my current location instead
-                                        </button>
-                                    </div>
-                                )}
-
                                 <p style={hintStyle}>
                                     {isBranch
                                         ? 'Branch activities use the branch location automatically. Go back to step 1 and choose Field Activity to set a different place.'
                                         : "You can confirm any place that exists on the map, even if you are not there. The match shown above is what gets saved."}
                                 </p>
 
-                                {mapSrc ? (
+                                {!isBranch ? (
+                                    <LocationPicker latitude={data.latitude} longitude={data.longitude} onPick={handlePinPick} height={380} />
+                                ) : mapSrc ? (
                                     <iframe
                                         title="Activity location"
                                         src={mapSrc}
@@ -693,8 +886,8 @@ export default function Create({ volunteers, defaultType = 'field', existingName
                         )}
                     </div>
 
-                    {/* Navigation buttons */}
-                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', marginTop: '16px' }}>
+                    {step > 1 && (
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', padding: '14px 24px', borderTop: '1px solid #ececec', background: '#fafafa' }}>
                         {step === 1 ? (
                             <Link href={route('admin.activities.index')} className="act-ghost-btn" style={{
                                 padding: '10px 18px', background: '#f5f5f5', color: '#444', borderRadius: '10px',
@@ -727,6 +920,8 @@ export default function Create({ volunteers, defaultType = 'field', existingName
                                 {processing ? 'Creating\u2026' : 'Create Activity'}
                             </button>
                         )}
+                    </div>
+                    )}
                     </div>
                 </form>
             </div>

@@ -1,9 +1,8 @@
 import { router } from '@inertiajs/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 /*
-  Attendance records that need an admin decision (moved here from the
-  Attendance page). Approve / Adjust / Reject post to
+  Needs Review tab (Attendance page). Approve / Adjust / Reject post to
   admin.attendance.review and the page reloads in place.
 */
 export default function ReviewPanel({ records }) {
@@ -12,8 +11,18 @@ export default function ReviewPanel({ records }) {
     const [adjTime, setAdjTime] = useState('');
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState('');
-    const [folded, setFolded] = useState(false);
-    const [menuFor, setMenuFor] = useState(null);
+    const [menu, setMenu] = useState(null);
+
+    useEffect(() => {
+        if (!menu) return;
+        const closeMenu = () => setMenu(null);
+        window.addEventListener('scroll', closeMenu, true);
+        window.addEventListener('resize', closeMenu);
+        return () => {
+            window.removeEventListener('scroll', closeMenu, true);
+            window.removeEventListener('resize', closeMenu);
+        };
+    }, [menu]);
 
     if (!records || records.length === 0) return null;
 
@@ -42,49 +51,101 @@ export default function ReviewPanel({ records }) {
         });
     };
 
+    const openMenu = (e, id) => {
+        if (menu && menu.id === id) { setMenu(null); return; }
+        const rect = e.currentTarget.getBoundingClientRect();
+        setMenu({ id, top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    };
+
     const titles = { approve: 'Approve attendance', adjust: 'Adjust Time Out', reject: 'Reject attendance' };
     const btn = { padding: '6px 12px', borderRadius: '7px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', border: '1px solid #ebebeb', background: 'white', color: '#444' };
 
-    return (
-        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #fde68a', marginBottom: '20px', overflow: 'visible' }}>
-            <div onClick={() => { setFolded(!folded); setMenuFor(null); }} style={{ padding: '14px 18px', background: '#fffbeb', borderBottom: folded ? 'none' : '1px solid #fde68a', borderRadius: folded ? '10px' : '10px 10px 0 0', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                <div>
-                <span style={{ fontSize: '12px', fontWeight: '700', color: '#92400e' }}>Needs Review ({records.length})</span>
-                <span style={{ fontSize: '11px', color: '#b45309', marginLeft: '8px' }}>Missing Time Outs and review requests waiting for your decision.</span>
+    const th = { padding: '10px 16px', textAlign: 'left', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#aaa', whiteSpace: 'nowrap' };
+    const td = { padding: '12px 16px', fontSize: '12px', color: '#555', borderTop: '1px solid #f5f5f5', verticalAlign: 'middle' };
+    const clip = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+    const tag = { display: 'inline-block', background: '#fff4e0', color: '#b45309', borderRadius: '6px', padding: '3px 8px', fontSize: '10.5px', fontWeight: '700', whiteSpace: 'nowrap' };
+
+    const reasonCell = (r) => {
+        const isFallback = r.attendance_method === 'face_fallback';
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {isFallback && r.fallback_photo_path && (
+                    <a href={route('admin.attendance.fallback-photo', r.id)} target="_blank" rel="noreferrer" style={{ flex: 'none' }}>
+                        <img src={route('admin.attendance.fallback-photo', r.id)} alt="Fallback selfie" style={{ width: '38px', height: '38px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #ebebeb', display: 'block' }} />
+                    </a>
+                )}
+                <div style={{ minWidth: 0 }}>
+                    <span style={tag}>
+                        {isFallback ? 'Face + email code' : r.review_reason ? 'Review requested' : (r.time_out ? 'Waiting for decision' : 'Missing time out')}
+                    </span>
+                    {isFallback && (
+                        <div style={{ fontSize: '10.5px', color: '#999', marginTop: '3px' }}>
+                            {r.fallback_distance != null ? 'Distance ' + Number(r.fallback_distance).toFixed(2) : ''}
+                            {!r.fallback_photo_path ? (r.fallback_distance != null ? ' \u00B7 ' : '') + 'No selfie' : ''}
+                        </div>
+                    )}
+                    {r.review_reason && (
+                        <div title={r.review_reason} style={{ fontSize: '10.5px', color: '#777', marginTop: '3px', maxWidth: '220px', ...clip }}>{r.review_reason}</div>
+                    )}
                 </div>
-                <span style={{ fontSize: '11px', fontWeight: '600', color: '#92400e', whiteSpace: 'nowrap' }}>{folded ? 'Show' : 'Hide'} {folded ? '\u25BE' : '\u25B4'}</span>
+            </div>
+        );
+    };
+
+    const menuRecord = menu ? records.find(x => x.id === menu.id) : null;
+
+    return (
+        <div>
+            <p style={{ fontSize: '12px', color: '#777', margin: '0 0 10px' }}>
+                Records waiting for your decision. Check the selfie before approving a fallback scan.
+            </p>
+
+            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '20px' }}>
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '820px' }}>
+                        <colgroup>
+                            <col style={{ width: '12%' }} /><col style={{ width: '18%' }} /><col style={{ width: '14%' }} />
+                            <col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '24%' }} /><col style={{ width: '12%' }} />
+                        </colgroup>
+                        <thead>
+                            <tr style={{ background: '#fafafa' }}>
+                                <th style={th}>Date</th><th style={th}>Name</th><th style={th}>Activity</th>
+                                <th style={th}>Time in</th><th style={th}>Time out</th><th style={th}>Reason</th><th style={th}></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {records.map(r => (
+                                <tr key={r.id} style={{ transition: 'background 0.1s' }}>
+                                    <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
+                                    <td style={{ ...td, fontSize: '12.5px', fontWeight: '600', color: '#111', ...clip }} title={r.user?.name ?? ''}>{r.user?.name ?? '-'}</td>
+                                    <td style={{ ...td, ...clip }} title={r.activity?.name ?? ''}>{r.activity?.name ?? '-'}</td>
+                                    <td style={{ ...td, color: '#16a34a', fontWeight: '600', whiteSpace: 'nowrap' }}>{fmtTime(r.time_in)}</td>
+                                    <td style={{ ...td, color: r.time_out ? '#CC0000' : '#999', fontWeight: '600', whiteSpace: 'nowrap' }}>{fmtTime(r.time_out)}</td>
+                                    <td style={td}>{reasonCell(r)}</td>
+                                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                        <button type="button" onClick={(e) => openMenu(e, r.id)} style={{ ...btn, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                            Action <span aria-hidden="true">{'\u25BE'}</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            {!folded && records.map(r => (
-                <div key={r.id} style={{ padding: '14px 18px', borderTop: '1px solid #f5f5f5', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-                        <div style={{ fontSize: '12.5px', fontWeight: '600', color: '#111' }}>{r.user?.name ?? '-'}</div>
-                        <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
-                            {r.activity?.name ?? '-'} &middot; {fmtDate(r.date)} &middot; Time In {fmtTime(r.time_in)} &middot; Time Out {fmtTime(r.time_out)}
-                        </div>
-                        <div style={{ fontSize: '11px', color: r.review_reason ? '#444' : '#b45309', marginTop: '4px' }}>
-                            {r.review_reason ? 'Volunteer\'s reason: ' + r.review_reason : 'Missing Time Out (closed automatically)'}
-                        </div>
+            {menu && menuRecord && (
+                <>
+                    <div onClick={() => setMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                    <div style={{ position: 'fixed', top: menu.top + 'px', right: menu.right + 'px', minWidth: '130px', background: 'white', border: '1px solid #ebebeb', borderRadius: '8px', padding: '4px', zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
+                        {[['approve', 'Approve', '#16a34a'], ['adjust', 'Adjust', '#444'], ['reject', 'Reject', '#CC0000']].map(([act, label, color]) => (
+                            <button key={act} type="button" onClick={() => { setMenu(null); open(menuRecord, act); }} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '7px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', color: color, cursor: 'pointer' }}>
+                                {label}
+                            </button>
+                        ))}
                     </div>
-                    <div style={{ position: 'relative' }}>
-                        <button type="button" onClick={() => setMenuFor(menuFor === r.id ? null : r.id)} style={{ ...btn, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            Action <span aria-hidden="true">{'\u25BE'}</span>
-                        </button>
-                        {menuFor === r.id && (
-                            <>
-                                <div onClick={() => setMenuFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                                <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', minWidth: '130px', background: 'white', border: '1px solid #ebebeb', borderRadius: '8px', padding: '4px', zIndex: 50 }}>
-                                    {[['approve', 'Approve', '#16a34a'], ['adjust', 'Adjust', '#444']].map(([act, label, color]) => (
-                                        <button key={act} type="button" onClick={() => { setMenuFor(null); open(r, act); }} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '7px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', color: color, cursor: 'pointer' }}>
-                                            {label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            ))}
+                </>
+            )}
 
             {active && (
                 <div role="presentation" onClick={close} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'grid', placeItems: 'center', padding: '16px', zIndex: 3000 }}>

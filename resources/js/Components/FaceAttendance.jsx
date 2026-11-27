@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { router } from '@inertiajs/react';
 import FaceRegistration from '@/Components/FaceRegistration';
+import TimeInSuccessModal from '@/Components/TimeInSuccessModal';
 
 const OVAL_RX = 140;
 const OVAL_RY = 180;
@@ -67,15 +68,12 @@ export function RingClockButton({ mode, isOngoing, record, activity, canProceed,
             style={{ position: 'relative', display: 'block', margin: '0 auto 16px', width: '170px', height: '170px', padding: 0, border: 'none', background: 'none', cursor: canProceed ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}
         >
             <svg width="170" height="170" viewBox="0 0 170 170" aria-hidden="true">
-                <circle cx="85" cy="85" r="74" fill="none" stroke={canProceed ? '#f7c1c1' : '#e4e4e6'} strokeWidth="7" />
+                <circle cx="85" cy="85" r="74" fill="none" stroke={canProceed ? '#f7c1c1' : '#e4e4e6'} strokeWidth="4" />
                 {progress > 0 && (
-                    <circle cx="85" cy="85" r="74" fill="none" stroke="#CC0000" strokeWidth="7" strokeLinecap="round"
+                    <circle cx="85" cy="85" r="74" fill="none" stroke="#CC0000" strokeWidth="4" strokeLinecap="round"
                         strokeDasharray={`${(progress * C).toFixed(1)} ${C.toFixed(1)}`} transform="rotate(-90 85 85)" />
                 )}
-                <circle cx="85" cy="85" r="62" fill={canProceed ? '#CC0000' : '#c9c9cc'} />
-                {progress > 0 && (
-                    <circle cx={(85 + R * Math.cos(ang)).toFixed(1)} cy={(85 + R * Math.sin(ang)).toFixed(1)} r="8" fill="white" stroke="#CC0000" strokeWidth="3" />
-                )}
+                <circle cx="85" cy="85" r="64" fill={canProceed ? '#CC0000' : '#c9c9cc'} />
             </svg>
             <span style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
                 <span style={{ fontSize: isOngoing ? '22px' : '20px', fontWeight: '600', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{isOngoing ? clock : label}</span>
@@ -122,70 +120,10 @@ export function RunningTimer({ record, activity }) {
             </div>
             {activity?.location_name && (
                 <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: '#666' }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
                     {activity.location_name}
                 </div>
             )}
-        </div>
-    );
-}
-
-// NEW: popup shown right after a Time In / Time Out is saved.
-function ScanSuccessModal({ mode, activityName, onClose }) {
-    const isCheckin = mode === 'checkin';
-
-    return (
-        <div
-            role="presentation"
-            onClick={onClose}
-            style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-                display: 'grid', placeItems: 'center', padding: '16px', zIndex: 3000,
-                fontFamily: "'Inter', sans-serif",
-            }}
-        >
-            <div
-                role="dialog"
-                aria-modal="true"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                    background: 'white', borderRadius: '16px', width: '100%', maxWidth: '320px',
-                    overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center',
-                    padding: '28px 24px 24px',
-                }}
-            >
-                <div style={{
-                    width: '52px', height: '52px', borderRadius: '50%', margin: '0 auto 14px',
-                    background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-
-                <div style={{ fontSize: '15px', fontWeight: '700', color: '#111', marginBottom: '6px' }}>
-                    {isCheckin ? 'Time In Successful' : 'Time Out Successful'}
-                </div>
-
-                <div style={{ fontSize: '12.5px', color: '#666', lineHeight: '1.6', marginBottom: '18px' }}>
-                    {isCheckin
-                        ? <>You're now <strong style={{ color: '#b45309' }}>Ongoing</strong> for <strong>{activityName}</strong>.</>
-                        : <>Your hours for <strong>{activityName}</strong> have been recorded.</>
-                    }
-                </div>
-
-                <button
-                    type="button"
-                    onClick={onClose}
-                    style={{
-                        width: '100%', padding: '11px', borderRadius: '10px', border: 'none',
-                        background: '#CC0000', color: 'white', fontSize: '13px', fontWeight: '600',
-                        cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                >
-                    Got it
-                </button>
-            </div>
         </div>
     );
 }
@@ -373,13 +311,11 @@ export default function FaceAttendance({ todayRecord, activities, availableActiv
                 />
             )}
 
-            {successInfo && (
-                <ScanSuccessModal
-                    mode={successInfo.mode}
-                    activityName={successInfo.activityName}
-                    onClose={() => setSuccessInfo(null)}
-                />
-            )}
+            <TimeInSuccessModal
+                open={!!successInfo}
+                type={successInfo?.mode === 'checkout' ? 'out' : 'in'}
+                onClose={() => setSuccessInfo(null)}
+            />
         </>
     );
 }
@@ -388,24 +324,129 @@ function dist(a, b) {
     return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-// CHANGED: exported so other pages (e.g. the volunteer dashboard) can open this
-// capture overlay directly, without going through the full FaceAttendance flow.
+function eyeAspectRatio(eye) {
+    const a = dist(eye[1], eye[5]);
+    const b = dist(eye[2], eye[4]);
+    const c = dist(eye[0], eye[3]);
+    return (a + b) / (2 * c);
+}
+
+// Same thresholds as FaceRegistration.jsx
+const TURN_LEFT_RATIO = 1.7;
+const TURN_RIGHT_RATIO = 0.6;
+
+const LIVENESS_PROMPTS = {
+    blink: 'Liveness check: blink once',
+    left: 'Liveness check: slowly turn your head left',
+    right: 'Liveness check: slowly turn your head right',
+};
+
 export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
     const videoRef = useRef(null);
     const streamRef = useRef(null);
     const holdCounter = useRef(0);
 
+    // Liveness state: stage 'challenge' (prove you are live) -> 'hold' (look straight, then submit)
+    const stage = useRef('challenge');
+    const challengeRef = useRef(null);
+    const poseFrames = useRef(0);
+    const blinkState = useRef({ base: 0, closed: false });
+
     const [modelsReady, setModelsReady] = useState(!!window.faceapi?.nets?.tinyFaceDetector?.isLoaded);
+    const [challengeReady, setChallengeReady] = useState(false);
     const [ringProgress, setRingProgress] = useState(0);
     const [ringColor, setRingColor] = useState('#e5e5e5');
     const [statusText, setStatusText] = useState('Position your face in the oval');
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
-    // NEW: "too early" confirmation. The server asks for it, Confirm resends with confirm_early.
     const [earlyConfirm, setEarlyConfirm] = useState('');
     const [lateConfirm, setLateConfirm] = useState('');
     const lastScan = useRef(null);
+    const pauseRef = useRef(false);
+    const fbCodeRef = useRef('');
+    const [failCount, setFailCount] = useState(0);
+    const [fbOpen, setFbOpen] = useState(false);
+    const [fbStep, setFbStep] = useState('ask');
+    const [fbCode, setFbCode] = useState('');
+    const [fbBusy, setFbBusy] = useState(false);
+    const [fbMsg, setFbMsg] = useState('');
+    const [fbActive, setFbActive] = useState(false);
+    const [fbPass, setFbPass] = useState('');
+
+    // Ask the server for a fresh random challenge (blink / left / right).
+    const loadChallenge = useCallback(async () => {
+        setChallengeReady(false);
+        stage.current = 'challenge';
+        poseFrames.current = 0;
+        holdCounter.current = 0;
+        blinkState.current = { base: 0, closed: false };
+        try {
+            const res = await fetch(route('volunteer.face.challenge'), {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            if (!res.ok) throw new Error('challenge failed');
+            challengeRef.current = await res.json();
+            setChallengeReady(true);
+        } catch {
+            setError('Could not start the liveness check. Please close and try again.');
+        }
+    }, []);
+
+    const resetScan = useCallback(() => {
+        setSubmitting(false);
+        setRingProgress(0);
+        setRingColor('#DC2626');
+        loadChallenge();
+    }, [loadChallenge]);
+
+    useEffect(() => { loadChallenge(); }, [loadChallenge]);
+
+    const modeKey = mode === 'checkin' ? 'in' : 'out';
+    const postJson = async (url, body) => {
+        const xsrf = decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '');
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-XSRF-TOKEN': xsrf },
+            credentials: 'same-origin',
+            body: JSON.stringify(body),
+        });
+        let data = {};
+        try { data = await res.json(); } catch {}
+        return { ok: res.ok, data };
+    };
+    const reportProblem = async () => {
+        try {
+            const { data } = await postJson(route('volunteer.face.scan.problem'), { activity_id: activityId, mode: modeKey });
+            if (typeof data.count === 'number') setFailCount(data.count);
+        } catch {}
+    };
+    const grabSelfie = () => {
+        const v = videoRef.current;
+        if (!v || !v.videoWidth) return null;
+        const cv = document.createElement('canvas');
+        cv.width = 320;
+        cv.height = Math.round(v.videoHeight * (320 / v.videoWidth));
+        cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+        return cv.toDataURL('image/jpeg', 0.7);
+    };
+    const sendFbCode = async () => {
+        setFbBusy(true); setFbMsg('');
+        try {
+            const { ok, data } = await postJson(route('volunteer.face.fallback.code'), { activity_id: activityId, mode: modeKey, password: fbPass });
+            if (ok) { setFbStep('code'); } else { setFbMsg(data.message || 'Could not send the code. Please try again.'); }
+        } catch { setFbMsg('Could not send the code. Please check your connection.'); }
+        setFbBusy(false);
+    };
+    const useFbCode = () => {
+        if (!/^\d{6}$/.test(fbCode)) { setFbMsg('Enter the 6-digit code.'); return; }
+        fbCodeRef.current = fbCode; setFbPass('');
+        setFbActive(true); setFbOpen(false); setError(''); setFbMsg('');
+        pauseRef.current = false;
+        resetScan();
+    };
+    const cancelFb = () => { setFbOpen(false); setFbMsg(''); pauseRef.current = false; resetScan(); };
 
     const resendConfirmed = () => {
         if (!lastScan.current) return;
@@ -417,13 +458,10 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
         }, {
             preserveState: true,
             preserveScroll: true,
-            onSuccess: () => onSuccess(),
+            onSuccess: () => { onSuccess(); router.reload(); },
             onError: (errors) => {
                 setError(Object.values(errors)[0] || 'Something went wrong. Please try again.');
-                setRingColor('#DC2626');
-                setSubmitting(false);
-                holdCounter.current = 0;
-                setRingProgress(0);
+                resetScan();
             },
         });
     };
@@ -445,7 +483,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                 window.faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
                 window.faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
             ]);
-            setModelsReady(true);
+            setModelsReady(true); (async () => { try { const t0 = performance.now(); const warm = document.createElement('canvas'); warm.width = 150; warm.height = 150; await window.faceapi.detectSingleFace(warm, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 288, scoreThreshold: 0.4 })).withFaceLandmarks(); await window.faceapi.nets.faceRecognitionNet.computeFaceDescriptor(warm); console.log('[scan] warm-up ms', Math.round(performance.now() - t0)); } catch (e) { console.warn('[scan] warm-up skipped', e); } })();
         })().catch(() => setError('Could not load face detection models.'));
     }, []);
 
@@ -466,90 +504,293 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
     }, [modelsReady]);
 
     useEffect(() => {
-        if (!modelsReady || submitting) return;
+        if (!modelsReady || !challengeReady || submitting) return;
         let cancelled = false;
+        let capturing = false;
+        let timer = null;
+        let cachedPos = null;
+        let preState = 0;
 
-        const interval = setInterval(async () => {
-            if (cancelled || !videoRef.current) return;
-            const options = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
-            const result = await window.faceapi
-                .detectSingleFace(videoRef.current, options)
-                .withFaceLandmarks()
-                .withFaceDescriptor();
+        const geoOpts = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
+        // Start the location lookup now so it is ready when the blink passes.
+        const keepBest = (pp) => { if (!cachedPos || pp.coords.accuracy < cachedPos.coords.accuracy) cachedPos = pp; };
+        let lastGeoErr = null;
+        let lowId = null;
+        const onGeoErr = (e) => {
+            lastGeoErr = e;
+            if (e && e.code !== 1 && lowId === null) {
+                lowId = navigator.geolocation.watchPosition(keepBest, (e2) => { lastGeoErr = e2; }, { enableHighAccuracy: false, maximumAge: 60000, timeout: 30000 });
+            }
+        };
+        const watchId = navigator.geolocation.watchPosition(keepBest, onGeoErr, geoOpts);
+        lowId = navigator.geolocation.watchPosition(keepBest, (e2) => { lastGeoErr = e2; }, { enableHighAccuracy: false, maximumAge: 60000, timeout: 30000 });
+        const stopGeo = () => {
+            navigator.geolocation.clearWatch(watchId);
+            if (lowId !== null) navigator.geolocation.clearWatch(lowId);
+        };
+        setTimeout(stopGeo, 120000);
+        
+        const getPos = (ok, fail) => {
+            const started = Date.now();
+            const check = () => {
+                if (cachedPos && (cachedPos.coords.accuracy <= 150 || Date.now() - started > 2500)) {
+                    stopGeo();
+                    return ok(cachedPos);
+                }
+                if (!cachedPos && Date.now() - started > 20000) {
+                    stopGeo();
+                    return fail(lastGeoErr || { code: 3, message: 'Location timeout' });
+                }
+                setTimeout(check, 400);
+            };
+            check();
+        };
 
-            if (!result) {
-                holdCounter.current = 0;
-                setRingProgress(0);
-                setRingColor('#e5e5e5');
-                setStatusText('Position your face in the oval');
+        const SEQ = ['left', 'right', 'blink'];
+        const LABEL = { left: 'Turn your head LEFT', right: 'Turn your head RIGHT', blink: 'Now BLINK your eyes' };
+        const POSE_NEEDED = 4;
+        const TURN_LEFT = 1.7;
+        const TURN_RIGHT = 0.6;
+
+        const bs = blinkState.current;
+        stage.current = 'challenge';
+        bs.step = 0; bs.t = Date.now(); bs.base = 0; bs.closed = false; bs.n = 0; window.__scanT0 = performance.now();
+        poseFrames.current = 0;
+        holdCounter.current = 0;
+
+        const canvas = document.createElement('canvas');
+        const brightFrame = () => {
+            const v = videoRef.current;
+            if (!v || v.readyState < 2 || v.videoWidth === 0) return null;
+            canvas.width = 320;
+            canvas.height = Math.round(v.videoHeight * (320 / v.videoWidth));
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.filter = 'brightness(1.5) contrast(1.15)';
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            return canvas;
+        };
+
+        const capture = async () => {
+            capturing = true; console.log('[scan] challenge finished after ms', Math.round(performance.now() - (window.__scanT0 || performance.now())));
+            cancelled = true;
+            stage.current = 'hold';
+            setRingProgress(1);
+            setRingColor('#16a34a');
+            setStatusText('\u2713 LEFT  \u2713 RIGHT  \u2713 BLINK  |  Verifying...');
+            setSubmitting(true);
+
+            const { token, challenge } = challengeRef.current;
+            const opts = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+            let full = null; const tCap = performance.now();
+            for (let i = 0; i < 4 && !full; i++) {
+                full = await window.faceapi.detectSingleFace(videoRef.current, opts).withFaceLandmarks().withFaceDescriptor(); console.log('[scan] detect+descriptor ms', Math.round(performance.now() - tCap));
+            }
+            if (!full) {
+                setError('Face not detected. Please try again.');
+                resetScan();
                 return;
             }
 
-            holdCounter.current += 1;
-            setRingColor('#DC2626');
-            setStatusText('Hold still...');
-            setRingProgress(Math.min(1, holdCounter.current / HOLD_FRAMES_NEEDED));
+            getPos(
+                (pos) => {
+                    const payload = {
+                        face_descriptor: Array.from(full.descriptor),
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        activity_id: activityId ?? null,
+                        liveness_token: token,
+                        liveness_challenge: challenge, ...(fbCodeRef.current ? { fallback_code: fbCodeRef.current, fallback_photo: grabSelfie() } : {}),
+                    };
+                    lastScan.current = payload; const tPost = performance.now();
+                    router.post(route(mode === 'checkin' ? 'volunteer.face.timein' : 'volunteer.face.timeout'), payload, {
+                        preserveState: true,
+                        preserveScroll: true,
+                        onSuccess: () => { console.log('[scan] server round-trip ms', Math.round(performance.now() - tPost)); onSuccess(); router.reload(); },
+                        onError: (errors) => {
+                            console.error('Time in/out errors:', errors);
+                            if (errors.confirm_late) { setLateConfirm(errors.confirm_late); return; }
+                            if (errors.confirm_early) { setEarlyConfirm(errors.confirm_early); return; }
+                            const msg = Object.values(errors)[0] || 'Face not recognized or out of range. Please try again.';
+                            const mm = /Failed attempt (\d+) of/.exec(String(msg));
+                            if (mm) setFailCount(parseInt(mm[1], 10));
+                            if (fbCodeRef.current) { fbCodeRef.current = ''; setFbActive(false); }
+                            setError(msg);
+                            resetScan();
+                        },
+                    });
+                },
+                (geoErr) => {
+                    setError(geoErr?.code === 1
+                        ? 'Location access is blocked. Allow location for this site in your browser settings, then try again.'
+                        : (geoErr?.code === 3 ? 'Location timed out. Move near a window or turn on GPS, then try again.' : 'Could not get your location. Turn on location or GPS, then try again.'));
+                    resetScan();
+                }
+            );
+        };
 
-            if (holdCounter.current >= HOLD_FRAMES_NEEDED) {
-                cancelled = true;
-                clearInterval(interval);
-                setRingColor('#16a34a');
-                setStatusText('Verifying...');
-                setSubmitting(true);
+        const step = async () => {
+            if (capturing || pauseRef.current || !videoRef.current || !challengeRef.current) return;
 
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        lastScan.current = {
-                            face_descriptor: Array.from(result.descriptor),
-                            latitude: pos.coords.latitude,
-                            longitude: pos.coords.longitude,
-                            activity_id: activityId ?? null,
-                        };
-                        router.post(route(mode === 'checkin' ? 'volunteer.face.timein' : 'volunteer.face.timeout'), {
-                            face_descriptor: Array.from(result.descriptor),
-                            latitude: pos.coords.latitude,
-                            longitude: pos.coords.longitude,
-                            activity_id: activityId ?? null,
-                        }, {
-                            // CHANGED: without these, Inertia rebuilds the whole page when the server
-                            // answers and wipes local state, which made the success popup disappear.
-                            preserveState: true,
-                            preserveScroll: true,
-                            onSuccess: () => onSuccess(),
-                            onError: (errors) => {
-                                console.error('Time in/out errors:', errors);
-                                if (errors.confirm_late) {
-                                    setLateConfirm(errors.confirm_late);
-                                    return;
-                                }
-                                if (errors.confirm_early) {
-                                    setEarlyConfirm(errors.confirm_early);
-                                    return;
-                                }
-                                setError(Object.values(errors)[0] || 'Face not recognized or out of range. Please try again.');
-                                setRingColor('#DC2626');
-                                setSubmitting(false);
-                                holdCounter.current = 0;
-                                setRingProgress(0);
-                            },
-                        });
-                    },
-                    (geoErr) => {
-                        // CHANGED: say what to do, depending on why location failed.
-                        setError(geoErr?.code === 1
-                            ? 'Location access is blocked. Allow location for this site in your browser settings, then try again.'
-                            : 'Could not get your location. Turn on location or GPS, then try again.');
-                        setSubmitting(false);
-                        holdCounter.current = 0;
-                        setRingProgress(0);
-                    }
-                );
+            const frame = brightFrame();
+            if (!frame) return;
+            const opts = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 288, scoreThreshold: 0.4 });
+            const result = await window.faceapi.detectSingleFace(frame, opts).withFaceLandmarks();
+            if (!cancelled && !capturing && !result) setStatusText('No face found. Look at the camera.');
+
+            if (cancelled || capturing) return;
+
+            if (!result) {
+                poseFrames.current = 0;
+                bs.n = 0;
+                return;
             }
-        }, 180);
 
-        return () => { cancelled = true; clearInterval(interval); };
-    }, [modelsReady, submitting, mode, activityId, onSuccess]);
+            const lm = result.landmarks;
 
+            // Is the face inside the oval? (map the frame onto the on-screen video box)
+            {
+                const bx = result.detection.box;
+                const sc = Math.max((OVAL_RX * 2) / frame.width, (OVAL_RY * 2) / frame.height);
+                const px = (OVAL_RX * 2 - frame.width * sc) / 2 + (bx.x + bx.width / 2) * sc;
+                const py = (OVAL_RY * 2 - frame.height * sc) / 2 + (bx.y + bx.height / 2) * sc;
+                const nx = (px - OVAL_RX) / OVAL_RX;
+                const ny = (py - OVAL_RY) / OVAL_RY;
+                if (nx * nx + ny * ny > 0.6) {
+                    poseFrames.current = 0;
+                    bs.n = 0;
+                    setRingColor('#DC2626');
+                    setStatusText('Center your face inside the oval.');
+                    return;
+                }
+            }
+            const jaw = lm.getJawOutline();
+            const nose = lm.getNose();
+            const tip = nose[nose.length - 1];
+            const ratio = dist(tip, jaw[0]) / dist(tip, jaw[16]);
+            const ear = (eyeAspectRatio(lm.getLeftEye()) + eyeAspectRatio(lm.getRightEye())) / 2;
+
+            // Early face check: reject a wrong face right at the start (normal scan only)
+            if (!fbCodeRef.current && preState !== 2) {
+                if (preState === 1) return;
+                if (ratio < 0.8 || ratio > 1.25) { setStatusText('Look straight at the camera.'); return; }
+
+            // Neutral-face check (mouth closed, eyes open). Tune these two numbers:
+            //   MOUTH_MAX: bigger = more relaxed (strict: 0.20, relaxed: 0.35)
+            //   EYE_MIN:   smaller = more relaxed (strict: 0.20, relaxed: 0.16)
+            {
+                const MOUTH_MAX = 0.25;
+                const EYE_MIN = 0.18;
+                const P = lm.positions;
+                const d = (a, b) => Math.hypot(P[a].x - P[b].x, P[a].y - P[b].y);
+                const mouthOpen = d(62, 66) / d(48, 54);
+                const earL = (d(37, 41) + d(38, 40)) / (2 * d(36, 39));
+                const earR = (d(43, 47) + d(44, 46)) / (2 * d(42, 45));
+                const eyes = (earL + earR) / 2;
+                const bad = mouthOpen > MOUTH_MAX || eyes < EYE_MIN;
+                // must stay bad for 4 frames in a row, so a normal blink does not fail
+                window.__exprBad = bad ? (window.__exprBad || 0) + 1 : 0;
+                if (window.__exprBad >= 4) {
+                    setRingColor('#DC2626');
+                    setStatusText('Relax your face, mouth closed.');
+                    return;
+                }
+            }
+                preState = 1;
+                setStatusText('Checking your face...');
+                try {
+                    const o = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+                    const f = await window.faceapi.detectSingleFace(videoRef.current, o).withFaceLandmarks().withFaceDescriptor();
+                    if (cancelled) return;
+                    if (!f) { preState = 0; return; }
+                    const xsrf = decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '');
+                    const r = await fetch(route('volunteer.face.precheck'), {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-XSRF-TOKEN': xsrf },
+                        body: JSON.stringify({ face_descriptor: Array.from(f.descriptor) }),
+                    });
+                    if (cancelled) return;
+                    if (r.status === 422) {
+                        const j = await r.json().catch(() => ({}));
+                        preState = 0;
+                        setError(j.message || 'Face not recognized. Please try again.');
+                        resetScan();
+                        return;
+                    }
+                    preState = 2;
+                } catch (e) {
+                    preState = 2;
+                }
+                return;
+            }
+
+            const cur = SEQ[bs.step];
+            const done = SEQ.slice(0, bs.step).map(s => '\u2713 ' + s.toUpperCase()).join('  ');
+            const prefix = done ? done + '  |  ' : '';
+
+            // short pause after each step so leftover movement does not count
+            if (Date.now() - (bs.t || 0) < 600) {
+                setRingColor('#16a34a');
+                setRingProgress(bs.step / SEQ.length);
+                return;
+            }
+
+            let passed = false;
+            let partial = 0;
+
+            if (cur === 'left' || cur === 'right') {
+                const turned = cur === 'left' ? ratio > TURN_LEFT : ratio < TURN_RIGHT;
+                poseFrames.current = turned ? poseFrames.current + 1 : 0;
+                partial = Math.min(1, poseFrames.current / POSE_NEEDED);
+                passed = poseFrames.current >= POSE_NEEDED;
+            } else {
+                const facing = ratio > 0.7 && ratio < 1.4;
+                if (!facing) { bs.n = 0; bs.closed = false; }
+                else {
+                    bs.base = Math.max((bs.base || 0) * 0.997, ear);
+                    if (ear < bs.base * 0.9) { bs.closed = true; }
+                    else { if (bs.closed && ear > bs.base * 0.94) passed = true; }
+                }
+                partial = bs.closed ? 0.5 : 0;
+            }
+
+            if (passed) {
+                bs.step += 1;
+                bs.t = Date.now();
+                poseFrames.current = 0;
+                bs.closed = false; bs.n = 0; bs.base = 0;
+                if (bs.step >= SEQ.length) {
+                    await capture();
+                } else {
+                    setRingColor('#16a34a');
+                    setRingProgress(bs.step / SEQ.length);
+                    setStatusText('\u2713 ' + cur.toUpperCase() + ' passed  |  ' + (bs.step + 1) + '/3 ' + LABEL[SEQ[bs.step]]);
+                }
+            } else {
+                setRingColor('#f59e0b');
+                setRingProgress((bs.step + partial) / SEQ.length);
+                setStatusText(prefix + (bs.step + 1) + '/3 ' + LABEL[cur]);
+            }
+        };
+
+        const loop = async () => {
+            const tl = performance.now(); try { await step(); } catch (e) { console.error(e); } window.__scanFrames = (window.__scanFrames || 0) + 1; window.__scanMs = (window.__scanMs || 0) + (performance.now() - tl); if (window.__scanFrames % 25 === 0) console.log('[scan] avg ms per frame', Math.round(window.__scanMs / window.__scanFrames));
+            if (!cancelled) timer = setTimeout(loop, 40);
+        };
+        loop();
+
+        const watchdog = setInterval(() => {
+            if (capturing || cancelled || pauseRef.current) return;
+            if (Date.now() - (bs.t || Date.now()) > 25000) {
+                cancelled = true;
+                reportProblem().finally(() => {
+                    setError('We could not complete the scan. Please try again with better light and your face inside the oval.');
+                    resetScan();
+                });
+            }
+        }, 1000);
+        return () => { cancelled = true; clearTimeout(timer); clearInterval(watchdog); };
+    }, [modelsReady, challengeReady, submitting, mode, activityId, onSuccess, resetScan]);
     const cx = OVAL_RX + 12;
     const cy = OVAL_RY + 12;
 
@@ -633,6 +874,59 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                 </div>
             )}
 
+            {failCount >= 3 && !fbActive && !fbOpen && (
+                <button
+                    type="button"
+                    onClick={() => { pauseRef.current = true; setFbOpen(true); setFbStep('ask'); setFbMsg(''); setFbCode(''); }}
+                    style={{ marginBottom: '14px', padding: '9px 18px', borderRadius: '10px', border: '1px solid #CC0000', background: 'white', color: '#CC0000', fontSize: '12.5px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                    Verify another way
+                </button>
+            )}
+
+            {fbActive && (
+                <div style={{ marginBottom: '14px', maxWidth: '320px', textAlign: 'center', fontSize: '12px', color: '#166534', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '9px 14px' }}>
+                    Code ready. Finish the face check (turn left, right, then blink) to record your attendance.
+                </div>
+            )}
+
+            {fbOpen && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'white', borderRadius: '16px', width: '100%', maxWidth: '320px', padding: '22px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '8px' }}>Verify another way</div>
+                        {fbStep === 'ask' ? (
+                            <>
+                                <div style={{ fontSize: '12.5px', color: '#666', lineHeight: '1.6', marginBottom: '16px' }}>
+                                    Enter your account password first. Then we will send a 6-digit code to your registered email. You will still need to finish the face check and be inside the activity location.
+                                    <input type="password" value={fbPass} onChange={(e) => setFbPass(e.target.value)} placeholder="Account password" autoComplete="current-password" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '12px', padding: '10px', borderRadius: '10px', border: '1px solid #e5e5e5', fontSize: '13px', fontFamily: 'inherit' }} />
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button type="button" onClick={cancelFb} style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '1px solid #e5e5e5', background: 'white', fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                                    <button type="button" disabled={fbBusy} onClick={sendFbCode} style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: '#CC0000', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>{fbBusy ? 'Sending...' : 'Send code'}</button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div style={{ fontSize: '12.5px', color: '#666', lineHeight: '1.6', marginBottom: '12px' }}>
+                                    Type the 6-digit code from your email. It expires in 5 minutes.
+                                </div>
+                                <input
+                                    type="text" inputMode="numeric" maxLength={6} value={fbCode}
+                                    onChange={(e) => setFbCode(e.target.value.replace(/\D/g, ''))}
+                                    style={{ width: '100%', padding: '11px', borderRadius: '10px', border: '1px solid #e5e5e5', fontSize: '20px', letterSpacing: '6px', textAlign: 'center', marginBottom: '14px', fontFamily: 'inherit' }}
+                                />
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button type="button" disabled={fbBusy} onClick={sendFbCode} style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '1px solid #e5e5e5', background: 'white', fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit' }}>{fbBusy ? 'Sending...' : 'Resend'}</button>
+                                    <button type="button" onClick={useFbCode} style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: '#CC0000', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>Continue</button>
+                                </div>
+                                <button type="button" onClick={cancelFb} style={{ marginTop: '10px', background: 'none', border: 'none', color: '#888', fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                            </>
+                        )}
+                        {fbMsg && <div style={{ marginTop: '12px', fontSize: '12px', color: '#991b1b' }}>{fbMsg}</div>}
+                    </div>
+                </div>
+            )}
+
             {error && (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '10px', padding: '10px 16px', fontSize: '12px', marginBottom: '16px', maxWidth: '320px', textAlign: 'center' }}>
                     {error}
@@ -656,7 +950,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                     <path
                         d={`M ${cx} ${cy - OVAL_RY} A ${OVAL_RX} ${OVAL_RY} 0 0 1 ${cx} ${cy + OVAL_RY} A ${OVAL_RX} ${OVAL_RY} 0 0 1 ${cx} ${cy - OVAL_RY}`}
                         pathLength="1"
-                        fill="none" stroke={ringColor} strokeWidth="6" strokeLinecap="round"
+                        fill="none" stroke={ringColor} strokeWidth="4" strokeLinecap="round"
                         strokeDasharray="1"
                         strokeDashoffset={1 - ringProgress}
                         style={{ opacity: ringProgress > 0 ? 1 : 0, transition: 'stroke-dashoffset 0.15s linear, stroke 0.2s' }}

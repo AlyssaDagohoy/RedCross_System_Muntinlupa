@@ -24,7 +24,7 @@ class Attendance extends Model
         'hours_rendered',
         'latitude',
         'longitude',
-        'attendance_method',
+        'attendance_method', 'fallback_photo_path', 'fallback_distance',
         'review_reason',
         'review_requested_at',
         'admin_remark',
@@ -122,6 +122,10 @@ class Attendance extends Model
             }
 
             foreach ($activity->volunteers as $volunteer) {
+                if (DtrSubmission::where('user_id', $volunteer->id)->where('activity_id', $activity->id)->where('status', 'pending')->exists()) {
+                    continue;
+                }
+
                 self::firstOrCreate(
                     ['user_id' => $volunteer->id, 'activity_id' => $activity->id],
                     ['date' => \Carbon\Carbon::parse($activity->date)->toDateString(), 'status' => 'absent']

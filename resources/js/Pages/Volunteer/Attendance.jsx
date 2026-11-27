@@ -29,6 +29,8 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
         return new Date(datetime).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
     };
 
+    const dashTime = (v) => (v ? new Date(v).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : '\u2014');
+
     const formatClock = (time) => {
         if (!time) return '-';
         // handles either "HH:mm:ss" strings or full datetimes
@@ -66,6 +68,8 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
         })
         .slice(0, 5);
 
+    const totalRecordsAtt = attendances.filter(r => !!r.time_out || ['absent', 'cancelled', 'needs_review', 'rejected'].includes(r.status)).length;
+
     return (
         <VolunteerShell active="attendance" title="Attendance">
 
@@ -90,21 +94,6 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                 </div>
             )}
 
-            {/* Branch fingerprint */}
-            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '20px' }}>
-                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Branch Fingerprint</span>
-                </div>
-                <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: '1 1 240px', fontSize: '12px', color: '#555', lineHeight: '1.6' }}>
-                        For activities held at the branch, scan your fingerprint on the branch device to time in and time out. Your attendance will appear in Recent Records below. Give your Biometric ID to the branch staff when you enroll your fingerprint.
-                    </div>
-                    <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '8px', padding: '10px 16px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '10px', fontWeight: '700', color: '#bbb', letterSpacing: '0.5px' }}>YOUR BIOMETRIC ID</div>
-                        <div style={{ fontSize: '18px', fontWeight: '700', color: '#111', marginTop: '2px' }}>{auth.user.biometric_id ?? '-'}</div>
-                    </div>
-                </div>
-            </div>
             {/* Face Time In / Time Out */}
             <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', marginBottom: '20px' }}>
                 <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -118,10 +107,10 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
             {/* Recent Records */}
             <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
                 <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Recent Records</span>
-                        <span style={{ fontSize: '10px', color: '#bbb', background: '#f5f5f5', padding: '2px 8px', borderRadius: '10px' }}>
-                            {filtered.length} record{filtered.length !== 1 ? 's' : ''}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Recent Activity</span>
+                        <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#999' }}>
+                            Showing {filtered.length} of {Math.max(totalRecordsAtt, filtered.length)}
                         </span>
                     </div>
                 </div>
@@ -131,17 +120,17 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Activity</th>
-                                <th>Attendance Method</th>
+                                <th>Activity</th><th>Where</th><th>Assigned by</th>
+                                
                                 <th>Status</th>
                                 <th>Time In</th>
-                                <th>Time Out</th>
+                                <th>Time Out</th><th>Assignment</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filtered.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" style={{ textAlign: 'center', color: '#ccc', padding: '36px', fontSize: '11px' }}>No records found</td>
+                                    <td colSpan="8" style={{ textAlign: 'center', color: '#ccc', padding: '36px', fontSize: '11px' }}>No recent activity</td>
                                 </tr>
                             ) : (
                                 filtered.map((record, i) => {
@@ -151,14 +140,16 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
                                         <tr key={record.id || i} onClick={() => { setSelectedRecord(record); setReviewOpen(false); setReviewReason(''); setReviewErr(''); }}>
                                             <td style={{ fontWeight: '500', color: '#111' }}>{formatDate(record.date)}</td>
                                             <td style={{ color: '#333' }}>{record.activity?.name || '-'}</td>
-                                            <td style={{ color: '#333' }}>{isAbsent ? '-' : ((record.attendance_method === 'fingerprint' ? 'Fingerprint' : 'Face Scan'))}</td>
+                                            <td title={record.activity?.location_name || ''} style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', color: '#666' }}>{record.activity?.location_name || '-'}</td>
+                                            <td style={{ color: '#666' }}>{record.activity?.assigned_by || record.activity?.assigned_by_name || record.activity?.assigned_by_role || '-'}</td>
                                             <td>
                                                 <span style={{ background: s.bg, color: s.color, fontSize: '10.5px', fontWeight: '600', padding: '3px 10px', borderRadius: '10px' }}>
                                                     {s.label}
                                                 </span>
                                             </td>
-                                            <td style={{ color: '#16a34a' }}>{formatTime(record.time_in)}</td>
-                                            <td style={{ color: '#CC0000' }}>{formatTime(record.time_out)}</td>
+                                            <td style={{ color: '#16a34a' }}>{dashTime(record.time_in)}</td>
+                                            <td style={{ color: '#CC0000' }}>{dashTime(record.time_out)}</td>
+                                            <td title={record.activity?.description || ''} style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', color: '#666' }}>{record.activity?.description || record.activity?.assignment || '-'}</td>
                                         </tr>
                                     );
                                 })
@@ -169,7 +160,7 @@ export default function VolunteerAttendance({ auth, attendances, todayRecord, ac
 
                 {/* Footer "View all" - same placement as the Dashboard cards */}
                 <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
-                    <Link href={route('volunteer.records')} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
+                    <Link href={route('volunteer.records')} style={{ fontSize: '10.5px', color: '#333', fontWeight: '400', textDecoration: 'none' }}>
                         View all
                     </Link>
                 </div>

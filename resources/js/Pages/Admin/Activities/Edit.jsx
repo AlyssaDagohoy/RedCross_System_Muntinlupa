@@ -1,3 +1,4 @@
+import LocationPicker from '../../../Components/LocationPicker';
 import { Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import AdminShell from '../../../Components/AdminShell';
@@ -91,8 +92,11 @@ export default function Edit({ activity, volunteers, existingNames = [] }) {
             : null
     );
     const [volunteerFilter, setVolunteerFilter] = useState('');
+    const [pinCoord, setPinCoord] = useState('');
+    const [nameEdited, setNameEdited] = useState(false);
 
     const locationConfirmed = !!(data.latitude && data.longitude);
+    const pinLocked = !!pinCoord && pinCoord === data.latitude;
     const isBranch = data.type === 'branch';
 
     // Another activity that already has the same name as what is typed (null if none)
@@ -129,7 +133,98 @@ export default function Edit({ activity, volunteers, existingNames = [] }) {
         setData('volunteer_ids', current.includes(id) ? current.filter((v) => v !== id) : [...current, id]);
     };
 
+    const [suggestions, setSuggestions] = useState([]);
+
+    const fetchSuggestions = (value) => {
+        clearTimeout(window.__locSuggestTimer);
+        const seq = (window.__locSuggestSeq = (window.__locSuggestSeq || 0) + 1);
+        const q = cleanQuery(value);
+        if (q.length < 2) { setSuggestions([]); return; }
+        window.__locSuggestTimer = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=ph&viewbox=120.95,14.50,121.12,14.28`);
+                const results = await res.json();
+                if (seq !== window.__locSuggestSeq) return;
+                setSuggestions(Array.isArray(results) ? results : []);
+            } catch {
+                if (seq === window.__locSuggestSeq) setSuggestions([]);
+            }
+        }, 600);
+    };
+
+    const pickSuggestion = (s) => {
+        clearTimeout(window.__locSuggestTimer);
+        window.__locSuggestSeq = (window.__locSuggestSeq || 0) + 1;
+        setData((prev) => ({
+            ...prev,
+            location_name: s.display_name,
+            latitude: parseFloat(s.lat).toFixed(8),
+            longitude: parseFloat(s.lon).toFixed(8),
+        }));
+        setSuggestions([]);
+        setLocationStatus({ ok: true, message: s.display_name });
+        setNameEdited(false);
+        if (typeof clearErrors === 'function') clearErrors('location_name');
+    };
+
+    const handlePinPick = async (pinLat, pinLon) => {
+        const seq = (window.__pinSeq = (window.__pinSeq || 0) + 1);
+        const latStr = Number(pinLat).toFixed(8);
+        const lonStr = Number(pinLon).toFixed(8);
+        setPinCoord(latStr);
+        setNameEdited(false);
+        setData((prev) => ({ ...prev, latitude: latStr, longitude: lonStr }));
+        setSearchLoading(true);
+        let placeName = `Pinned location (${Number(pinLat).toFixed(5)}, ${Number(pinLon).toFixed(5)})`;
+        try {
+            const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pinLat}&lon=${pinLon}&format=json&zoom=18`);
+            const info = await rev.json();
+            if (info && info.display_name) placeName = info.display_name;
+        } catch {}
+        if (seq !== window.__pinSeq) return;
+        setData((prev) => ({ ...prev, location_name: placeName, latitude: latStr, longitude: lonStr }));
+        setLocationStatus({ ok: true, message: placeName });
+        if (typeof clearErrors === 'function') clearErrors('location_name');
+        setSearchLoading(false);
+    };
+
+    const cleanQuery = (s) => String(s || '')
+        .replace(/\b(brgy|bgy|brg)\b\.?\s*/gi, 'Barangay ')
+        .replace(/\s+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/[.,\s]+$/, '')
+        .trim();
+
+    const searchPlace = async (text, exactOnly) => {
+        const base = cleanQuery(text)
+            .replace(/,?\s*(Philippines|Pilipinas)\b/gi, '')
+            .replace(/,?\s*(Metro Manila|National Capital Region|NCR|Southern Manila District)\b/gi, '')
+            .replace(/[.,\s]+$/, '')
+            .trim();
+        const parts = base.split(',').map((p) => p.trim()).filter(Boolean);
+        const tries = [];
+        for (let i = 0; i < parts.length; i++) {
+            if (i > 0 && parts.length - i < 2) break;
+            tries.push(parts.slice(i).join(', '));
+        }
+        if (tries.length === 0) tries.push(base);
+        if (exactOnly) tries.length = Math.min(tries.length, 1);
+        for (let i = 0; i < tries.length; i++) {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(tries[i])}&format=json&limit=1&countrycodes=ph&viewbox=120.95,14.50,121.12,14.28`);
+            const results = await res.json();
+            if (Array.isArray(results) && results.length > 0) return { result: results[0], exact: i === 0 };
+            if (i < tries.length - 1) await new Promise((r) => setTimeout(r, 1100));
+        }
+        return null;
+    };
+
     const handleLocationNameChange = (value) => {
+        if (pinLocked && data.latitude && data.longitude) {
+            setNameEdited(true);
+            setData((prev) => ({ ...prev, location_name: value }));
+            setLocationStatus({ ok: true, message: value });
+            return;
+        }
         setData((prev) => ({ ...prev, location_name: value, latitude: '', longitude: '' }));
         setLocationStatus(null);
     };
@@ -182,6 +277,10 @@ export default function Edit({ activity, volunteers, existingNames = [] }) {
     };
 
     const confirmLocation = async () => {
+        if (data.latitude && data.longitude && data.location_name.trim() && !nameEdited) {
+            setLocationStatus({ ok: true, message: data.location_name });
+            return;
+        }
         if (!data.location_name.trim()) {
             setLocationStatus({ ok: false, message: 'Type a location first.' });
             return;
@@ -189,18 +288,20 @@ export default function Edit({ activity, volunteers, existingNames = [] }) {
         setSearchLoading(true);
         setLocationStatus(null);
         try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(data.location_name)}&format=json&limit=1`);
+            const found = await searchPlace(data.location_name, nameEdited);
+            const res = { json: async () => (found ? [found.result] : []) };
             const results = await res.json();
             if (results.length > 0) {
                 const resolved = results[0].display_name;
+                setNameEdited(false);
                 setData((prev) => ({
                     ...prev,
                     latitude: parseFloat(results[0].lat).toFixed(8),
                     longitude: parseFloat(results[0].lon).toFixed(8),
                 }));
-                setLocationStatus({ ok: true, message: resolved });
+                setLocationStatus({ ok: true, message: found && !found.exact ? ('Exact place not found, so the pin is near: ' + resolved + '. Drag the pin to the exact spot.') : resolved });
             } else {
-                setLocationStatus({ ok: false, message: "Couldn't find that place \u2014 try adding a barangay or city." });
+                setLocationStatus(nameEdited ? { ok: true, message: data.location_name } : { ok: false, message: "Couldn't find that place \u2014 try adding a barangay or city." });
             }
         } catch {
             setLocationStatus({ ok: false, message: 'Search failed. Check your connection and try again.' });
@@ -212,19 +313,27 @@ export default function Edit({ activity, volunteers, existingNames = [] }) {
         setSearchLoading(true);
         setLocationStatus(null);
         navigator.geolocation.getCurrentPosition(
-            (pos) => {
+            async (pos) => {
+                let placeName = `Current location (${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)})`;
+                try {
+                    const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`);
+                    const info = await rev.json();
+                    if (info && info.display_name) placeName = info.display_name;
+                } catch {}
+                if (typeof clearErrors === 'function') clearErrors('location_name');
                 setData((prev) => ({
                     ...prev,
+                    location_name: placeName,
                     latitude: pos.coords.latitude.toFixed(8),
                     longitude: pos.coords.longitude.toFixed(8),
                 }));
-                setLocationStatus({ ok: true, message: 'Using your current location as the activity site.' });
+                setLocationStatus({ ok: true, message: placeName + ' (about ' + Math.round(pos.coords.accuracy) + ' m accuracy)' });
                 setSearchLoading(false);
             },
             () => {
                 setLocationStatus({ ok: false, message: 'Could not detect your location. Try typing the address instead.' });
                 setSearchLoading(false);
-            }
+            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     };
 
@@ -446,7 +555,7 @@ export default function Edit({ activity, volunteers, existingNames = [] }) {
                                     className="act-input"
                                     type="text"
                                     value={data.location_name}
-                                    onChange={(e) => handleLocationNameChange(e.target.value)}
+                                    onChange={(e) => { handleLocationNameChange(e.target.value); fetchSuggestions(e.target.value); }}
                                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), !isBranch && confirmLocation())}
                                     readOnly={isBranch}
                                     style={{ ...inputStyle, ...(isBranch ? { background: '#f3f3f3', color: '#666', cursor: 'not-allowed' } : {}) }}
@@ -468,7 +577,28 @@ export default function Edit({ activity, volunteers, existingNames = [] }) {
                                     </button>
                                 )}
                             </div>
-                            {errors.location_name && <p style={errorStyle}>{errors.location_name}</p>}
+                            {!isBranch && !locationConfirmed && (
+                                    <div style={{ marginTop: '8px', background: '#eff6ff', borderRadius: '8px', padding: '10px 12px', fontSize: '12.5px', lineHeight: 1.5, color: '#1e3a8a' }}>
+                                        <div style={{ fontWeight: 600, marginBottom: '2px' }}>How to find the address</div>
+                                        Type the subdivision or street, then the barangay (Brgy.) and Muntinlupa City. Example: A. Bunye, Brgy. Sucat, Muntinlupa City. Pick a suggestion from the list, or place the pin on the map and type the full name yourself.
+                                    </div>
+                                )}{errors.location_name && <p style={errorStyle}>{errors.location_name}</p>}
+
+                                {suggestions.length > 0 && (
+                                    <div role="listbox" style={{ marginTop: '6px', border: '1px solid #ebebeb', borderRadius: '10px', overflow: 'hidden', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                                        {suggestions.map((s, i) => (
+                                            <button
+                                                key={s.place_id}
+                                                type="button"
+                                                role="option"
+                                                onClick={() => pickSuggestion(s)}
+                                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', background: 'white', border: 'none', borderBottom: i < suggestions.length - 1 ? '1px solid #f1f1f1' : 'none', cursor: 'pointer', fontSize: '12.5px', fontFamily: 'inherit', color: '#333' }}
+                                            >
+                                                {s.display_name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
 
                             {searchLoading && isBranch && <p style={hintStyle}>Looking up the branch location&hellip;</p>}
 
@@ -482,30 +612,15 @@ export default function Edit({ activity, volunteers, existingNames = [] }) {
                                 </div>
                             )}
 
-                            {!isBranch && (
-                                <div style={{ marginTop: '8px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={useMyLocation}
-                                        disabled={searchLoading}
-                                        className="act-ghost-btn"
-                                        style={{
-                                            padding: '7px 12px', background: '#fafafa', color: '#666', border: '1px solid #ebebeb',
-                                            borderRadius: '8px', cursor: 'pointer', fontSize: '11.5px', fontFamily: 'inherit',
-                                        }}
-                                    >
-                                        {'\u{1F4CD}'} Use my current location instead
-                                    </button>
-                                </div>
-                            )}
-
                             <p style={hintStyle}>
                                 {isBranch
                                     ? 'Branch activities use the branch location automatically. Choose Field Activity to set a different place.'
                                     : "You can confirm any place that exists on the map, even if you are not there. Editing the name clears the match until you re-confirm."}
                             </p>
 
-                            {mapSrc ? (
+                            {!isBranch ? (
+                                    <LocationPicker latitude={data.latitude} longitude={data.longitude} onPick={handlePinPick} height={380} />
+                                ) : mapSrc ? (
                                 <iframe
                                     title="Activity location"
                                     src={mapSrc}

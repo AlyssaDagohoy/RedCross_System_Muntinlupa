@@ -212,6 +212,7 @@ export default function Volunteers({ volunteers }) {
         <AdminShell active="volunteers" title="Volunteers">
             <style>{`
                 .vol-head:hover { background: #fafafa; }
+                .vol-row:last-child { border-bottom: none !important; }
                 .stat-card:hover { border-color: #ccc !important; }
             `}</style>
 
@@ -226,18 +227,16 @@ export default function Volunteers({ volunteers }) {
                 }}>{flash.success}</div>
             )}
 
-                        <div style={{ display: 'flex', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                <input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search name, email, or ID"
-                    style={{ ...inputStyle, flex: '1 1 200px', paddingLeft: '36px', backgroundImage: "url(data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2716%27%20height=%2716%27%20viewBox=%270%200%2024%2024%27%20fill=%27none%27%20stroke=%27%23999%27%20stroke-width=%272%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Ccircle%20cx=%2711%27%20cy=%2711%27%20r=%277%27/%3E%3Cpath%20d=%27m21%2021-4.3-4.3%27/%3E%3C/svg%3E)", backgroundRepeat: 'no-repeat', backgroundPosition: '12px center', backgroundSize: '16px 16px' }}
-                />
-                <div style={{ position: 'relative', flex: '0 0 auto' }}>
-                    <button type="button" aria-label="Filters" aria-expanded={fOpen} onClick={() => setFOpen((o) => !o)} style={{ position: 'relative', width: '38px', height: '38px', borderRadius: '9px', background: '#CC0000', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4h16v2.172a2 2 0 0 1 -.586 1.414l-4.414 4.414v7l-6 2v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227z" /></svg>
-                        {fCount > 0 && <span style={{ position: 'absolute', top: '-7px', right: '-7px', background: '#fff', color: '#CC0000', border: '1px solid #CC0000', borderRadius: '10px', fontSize: '10px', fontWeight: '600', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{fCount}</span>}
-                    </button>
+                        <div style={{ display: 'flex', gap: '10px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flex: '1 1 260px', maxWidth: '360px', height: '36px', background: '#fff', border: '1px solid #e5e5e5', borderRadius: '8px', padding: '0 4px 0 12px', gap: '8px', boxSizing: 'border-box' }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none' }}><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+                    <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, or ID" style={{ flex: 1, minWidth: 0, height: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '12.5px', fontFamily: 'inherit', color: '#222', padding: 0 }} />
+                    <span style={{ width: '1px', height: '18px', background: '#e5e5e5', flex: 'none' }} />
+                    <div style={{ position: 'relative', flex: '0 0 auto' }}>
+                        <button type="button" aria-label="Filters" aria-expanded={fOpen} onClick={() => setFOpen((o) => !o)} style={{ position: 'relative', width: '30px', height: '28px', borderRadius: '6px', background: 'transparent', color: '#555', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="14" cy="6" r="2" /><line x1="4" y1="6" x2="12" y2="6" /><line x1="16" y1="6" x2="20" y2="6" /><circle cx="8" cy="12" r="2" /><line x1="4" y1="12" x2="6" y2="12" /><line x1="10" y1="12" x2="20" y2="12" /><circle cx="17" cy="18" r="2" /><line x1="4" y1="18" x2="15" y2="18" /><line x1="19" y1="18" x2="20" y2="18" /></svg>
+                            {fCount > 0 && <span style={{ position: 'absolute', top: '3px', right: '4px', width: '7px', height: '7px', borderRadius: '50%', background: '#CC0000' }} />}
+                        </button>
                     {fOpen && (
                         <>
                             <div onClick={() => setFOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
@@ -272,7 +271,8 @@ export default function Volunteers({ volunteers }) {
                         </>
                     )}
                 </div>
-                <button type="button" onClick={() => setProfilesView((p) => !p)} style={{ height: '38px', display: 'flex', alignItems: 'center', padding: '0 14px', borderRadius: '9px', border: '1px solid ' + (profilesView ? '#CC0000' : '#e5e5e5'), background: profilesView ? '#CC0000' : '#fff', color: profilesView ? '#fff' : '#555', fontSize: '12.5px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>Volunteer profiles</button>
+                </div>
+                
             </div>
 
             {/* Tabs */}
@@ -283,26 +283,58 @@ export default function Volunteers({ volunteers }) {
                     { key: 'approved', label: 'Approved', count: count('approved') },
                     { key: 'rejected', label: 'Rejected', count: count('rejected') },
                 ];
-                return (
-                    <div role="tablist" style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', marginBottom: '14px', borderBottom: '1px solid #e5e5e5' }}>
-                        {opts.map((o) => {
-                            const on = !profilesView && o.key === filter;
-                            return (
-                                <button key={o.key} type="button" role="tab" aria-selected={on} onClick={() => { setFilter(o.key); setProfilesView(false); }} style={{ border: 'none', borderBottom: '2px solid ' + (on ? '#CC0000' : 'transparent'), marginBottom: '-1px', background: 'transparent', color: on ? '#222' : '#777', fontWeight: on ? '600' : '500', borderRadius: '0', padding: '8px 14px', fontSize: '12.5px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                                    {o.label}<span style={{ marginLeft: '6px', fontWeight: '400', color: on ? '#CC0000' : '#999' }}>{o.count}</span>
-                                </button>
-                            );
-                        })}
+                const total = volunteers.length;
+                const approved = count('approved');
+                const rejected = count('rejected');
+                const inactive = total - approved;
+                const withFace = volunteers.filter((v) => v.status === 'approved' && v.biometric_id).length;
+                const thisMonth = volunteers.filter((v) => { const d = new Date(v.created_at); const now = new Date(); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); }).length;
+                const ring = (n, frac, color) => (
+                    <svg width="46" height="46" viewBox="0 0 46 46" aria-hidden="true" style={{ flex: 'none' }}>
+                        <circle cx="23" cy="23" r="18" fill="none" stroke="#ececec" strokeWidth="5" />
+                        {frac > 0 && <circle cx="23" cy="23" r="18" fill="none" stroke={color} strokeWidth="5" strokeDasharray={(2 * Math.PI * 18 * Math.min(frac, 1)) + ' ' + (2 * Math.PI * 18)} transform="rotate(-90 23 23)" />}
+                        <text x="23" y="28" textAnchor="middle" fontSize="14" fontWeight="600" fill="#111">{n}</text>
+                    </svg>
+                );
+                const card = (c) => (
+                    <div key={c.title} style={{ background: '#fff', border: '1px solid #ebebeb', borderRadius: '14px', padding: '14px' }}>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                            {ring(c.n, c.frac, c.color)}
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontWeight: '700', fontSize: '13px', color: '#111' }}>{c.title}</div>
+                                <div style={{ fontSize: '11px', color: '#999', marginTop: '1px' }}>{c.sub}</div>
+                                {[c.b1, c.b2].map(([dot, text]) => (
+                                    <div key={text} style={{ fontSize: '11.5px', color: '#555', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: dot, flex: 'none' }} />{text}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <span style={{ display: 'inline-block', marginTop: '12px', fontSize: '10.5px', fontWeight: '600', padding: '3px 9px', borderRadius: '999px', background: c.ok ? '#dcfce7' : '#f1f1f1', color: c.ok ? '#15803d' : '#666' }}>{c.pill}</span>
                     </div>
                 );
+                return (
+                    <>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                            {card({ title: 'Total volunteers', sub: 'Registered volunteers', n: total, frac: total ? 1 : 0, color: '#CC0000', b1: ['#16a34a', approved + ' approved'], b2: ['#b8b8b8', inactive + ' waiting'], pill: thisMonth > 0 ? '\u2191 +' + thisMonth + ' this month' : 'No new this month', ok: thisMonth > 0 })}
+                            {card({ title: 'Active volunteers', sub: 'Approved volunteers', n: approved, frac: total ? approved / total : 0, color: '#16a34a', b1: ['#16a34a', withFace + ' face registered'], b2: ['#b8b8b8', (approved - withFace) + ' not registered'], pill: inactive === 0 && total > 0 ? 'All approved' : inactive + ' not approved', ok: inactive === 0 && total > 0 })}
+                            {card({ title: 'Inactive volunteers', sub: 'Pending or rejected', n: inactive, frac: total ? inactive / total : 0, color: '#f59e0b', b1: ['#d97706', pendingCount + ' pending'], b2: ['#CC0000', rejected + ' rejected'], pill: inactive === 0 ? 'All good' : 'Needs attention', ok: inactive === 0 })}
+                        </div>
+                        <div role="tablist" style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', flexWrap: 'wrap', marginBottom: '-1px', paddingLeft: '2px', position: 'relative', zIndex: 1 }}>
+                            {opts.map((o) => {
+                                const on = o.key === filter;
+                                return (
+                                    <button key={o.key} type="button" role="tab" aria-selected={on} onClick={() => { setFilter(o.key); setProfilesView(false); }} style={{ border: '1px solid ' + (on ? '#e5e5e5' : '#ececec'), borderBottom: '1px solid ' + (on ? '#fff' : 'transparent'), background: on ? '#fff' : '#f3f3f3', color: on ? '#111' : '#8a8a8a', fontWeight: '600', borderRadius: '10px 10px 0 0', padding: on ? '10px 18px' : '8px 16px', fontSize: '12.5px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                        {o.label}<span style={{ marginLeft: '6px', fontWeight: '400', color: '#999' }}>{o.count}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </>
+                );
             })()}
-            {/* Total volunteers card (inside Approved tab) */}
-            {filter === 'approved' && (
-                <div style={{ background: '#CC0000', color: 'white', borderRadius: '12px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-                    <div style={{ fontSize: '44px', fontWeight: '700', lineHeight: 1 }}>{volunteers.length}</div>
-                    <div style={{ fontSize: '16px', fontWeight: '600' }}>Total volunteers</div>
-                </div>
-            )}
+            <div style={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: '0 12px 12px 12px', overflow: 'hidden' }}>
+            
             {/* Pending banner */}
             {pendingCount > 0 && (
                 <div
@@ -313,7 +345,7 @@ export default function Volunteers({ volunteers }) {
                     style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         background: '#fff5f5', border: '1px solid #fecaca', borderLeft: '4px solid #CC0000',
-                        borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', cursor: 'pointer',
+                        borderRadius: '10px', padding: '12px 16px', margin: '12px', cursor: 'pointer',
                     }}
                 >
                     <span style={{ fontSize: '13px', fontWeight: '700', color: '#111' }}>
@@ -329,46 +361,82 @@ export default function Volunteers({ volunteers }) {
 
             {/* Volunteer cards */}
             {visible.length === 0 ? (
-                <div style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '12px', padding: '36px', textAlign: 'center', color: '#bbb', fontSize: '12.5px' }}>No volunteers found</div>
+                <div style={{ padding: '36px', textAlign: 'center', color: '#bbb', fontSize: '12.5px' }}>No volunteers found</div>
             ) : visible.map((v) => {
                 const st = STATUS[v.status] || STATUS.pending;
                 const open = expanded === v.id;
                 const docsDone = (v.documents_submitted ?? 0) >= (v.documents_required ?? 4);
                 return (
-                    <div key={v.id} style={{
-                        background: 'white', borderRadius: '12px', overflow: 'hidden', marginBottom: '10px',
-                        border: open ? '1px solid #f5c2c2' : '1px solid #ebebeb',
+                    <div key={v.id} className="vol-row" style={{
+                        background: 'white', overflow: 'hidden',
+                        borderBottom: '1px solid #f0f0f0',
                         ...(highlight && v.status === 'pending' ? { position: 'relative', zIndex: 1, animation: 'vol-lift 1.2s ease, vol-ring 1s ease-out 2, vol-bd 2s ease' } : {}),
                     }}>
                         {/* Card header */}
-                        <div className="vol-head" onClick={() => setExpanded(open ? null : v.id)} style={{
-                            display: 'flex', alignItems: 'center', gap: '12px',
-                            padding: '14px 16px', cursor: 'pointer',
-                        }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '13.5px', fontWeight: '700', color: '#111' }}>{v.name}</div>
-                                {v.status === 'rejected' && <div style={{ fontSize: '11.5px', color: '#888', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.email}</div>}
+                        <div className="vol-head" onClick={() => setExpanded(open ? null : v.id)} style={{ padding: '10px 14px', cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#e8f0fb', color: '#1d4f91', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '600', fontSize: '10.5px', flex: 'none' }}>{initials(v.name)}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#111', lineHeight: 1.2 }}>{v.name}</div>
+                                    <div style={{ fontSize: '11px', color: '#888', marginTop: '0px', lineHeight: 1.2 }}>{v.badge_number || 'ID created on approval'}</div>
+                                </div>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: '600', color: v.status === 'approved' ? '#15803d' : st.color }}>
+                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: v.status === 'approved' ? '#16a34a' : st.color }} />
+                                    {v.status === 'approved' ? 'Active' : st.label}
+                                </span>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}><path d="M9 6l6 6-6 6" /></svg>
                             </div>
-                            {v.status === 'rejected' && (<span style={{
-                                background: st.bg, color: st.color, fontSize: '10px', fontWeight: '700',
-                                padding: '3px 10px', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '0.4px',
-                            }}>{st.label}</span>)}
-                            <span style={{ color: '#aaa', fontSize: '12px', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
+                            <div className="vol-chips vol-compact" style={{ display: 'flex', gap: '6px', marginTop: '7px', paddingLeft: '38px', flexWrap: 'wrap' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', padding: '2px 8px', borderRadius: '999px', background: v.biometric_id ? '#dcfce7' : '#f1f1f1', color: v.biometric_id ? '#15803d' : '#777' }}>
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M16 4h2a2 2 0 0 1 2 2v2M16 20h2a2 2 0 0 0 2-2v-2" /><path d="M9 10h.01M15 10h.01M9.5 15a3.5 3.5 0 0 0 5 0" /></svg>
+                                    {v.biometric_id ? 'Face registered' : 'Face not registered'}
+                                </span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', padding: '2px 8px', borderRadius: '999px', background: '#f1f1f1', color: '#555' }}>
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+                                    Registered {new Date(v.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                </span>
+                            </div>
                         </div>
 
                         {/* Details (inside the card) */}
                         {open && (
                             <div style={{ background: '#fafafa', borderTop: '1px solid #f0f0f0', padding: '18px 18px 14px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                    <Detail icon={ICONS.id} label="Volunteer ID" value={v.badge_number || 'Created on approval'} strong={!!v.badge_number} />
-                                    <Detail icon={ICONS.mail} label="Email" value={v.email} />
-                                    <Detail icon={ICONS.calendar} label="Registered" value={new Date(v.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })} />
-                                    {profilesView && (
-                                        <>
-                                            <Detail icon={ICONS.id} label="Face recognition" value={v.biometric_id ? 'Registered' : 'Not registered yet'} />
-                                            <Detail icon={ICONS.clock} label="Biometric device" value="ZKTeco F22" />
-                                        </>
-                                    )}                                </div>
+                                {(() => {
+                                    const dash = (x) => (x ? x : '\u2014');
+                                    const sec = (title, rows) => (
+                                        <div key={title} style={{ marginBottom: '14px' }}>
+                                            <div style={{ fontSize: '12.5px', fontWeight: '700', color: '#111', margin: '0 0 4px' }}>{title}</div>
+                                            {rows.map(([k, val]) => (
+                                                <div key={k} style={{ display: 'grid', gridTemplateColumns: '38% minmax(0, 1fr)', gap: '8px', padding: '7px 0', borderTop: '1px solid #ececec', fontSize: '12.5px' }}>
+                                                    <span style={{ color: '#888' }}>{k}</span>
+                                                    <span style={{ color: '#111', fontWeight: '500', wordBreak: 'break-word' }}>{val}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                    return (
+                                        <div>
+                                            {sec('Personal Information', [
+                                                ['Email', dash(v.email)],
+                                                ['Contact number', dash(v.phone)],
+                                                ['Birthdate', dash(v.birth_label)],
+                                                ['Address', dash(v.address)],
+                                                ['Gender', dash(v.gender)],
+                                                ['Registered', new Date(v.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })],
+                                            ])}
+                                            {sec('Emergency contact', [
+                                                ['Full name', dash(v.emergency_contact_name)],
+                                                ['Relationship', dash(v.emergency_contact_relationship)],
+                                                ['Contact number', dash(v.emergency_contact_phone)],
+                                            ])}
+                                            {sec('Volunteer Information', [
+                                                ['Volunteer ID', v.badge_number || 'Created on approval'],
+                                                ['Account status', v.status === 'approved' ? 'Active' : st.label],
+                                                ['Face registration', v.biometric_id ? 'Registered' : 'Not registered yet'],
+                                            ])}
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Submitted documents (dropdown) */}
                                 {(() => {
@@ -435,7 +503,9 @@ export default function Volunteers({ volunteers }) {
                 );
             })}
 
-            <div style={{ padding: '6px 4px', fontSize: '11.5px', color: '#999' }}>
+            </div>
+
+            <div style={{ marginTop: '8px', padding: '6px 4px', fontSize: '11.5px', color: '#999' }}>
                 Showing {visible.length} of {volunteers.length} volunteers
             </div>
 

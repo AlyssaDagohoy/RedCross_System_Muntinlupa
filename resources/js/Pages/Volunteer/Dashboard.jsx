@@ -1,26 +1,29 @@
 import { Link, router } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import VolunteerShell, { safeRoute, useVolunteerShell, faceStatusLabel } from '../../Components/VolunteerShell';
 import { AttendanceCapture, RingClockButton, RunningTimer } from '../../Components/FaceAttendance';
+import TimeInSuccessModal from '../../Components/TimeInSuccessModal';
 
-export default function VolunteerDashboard({ auth, totalHours, totalDays, monthDays, assignedActivities, recentAttendance, todayAttendance }) {
+export default function VolunteerDashboard({ auth, totalHours, totalDays, monthDays, attendedCount, missedCount, monthHours, todayHours, lastMonthDone, lastMonthAttended, lastMonthMissed, monthAttended, fieldAttended, branchAttended, longestStreak, currentStreak, monthDone, monthScheduled, recordsTotal, assignedActivities, recentAttendance, todayAttendance }) {
     const activitiesList = assignedActivities || [];
     const attendance = (recentAttendance || [])
-        .filter(rec => !!rec.hours_rendered || !!rec.time_out || rec.status === 'cancelled' || rec.status === 'absent')
+        .filter(rec => new Date(rec.date).toDateString() !== new Date().toDateString() || !!rec.time_out || ['absent', 'cancelled', 'needs_review'].includes(rec.status)).filter(rec => !!rec.hours_rendered || !!rec.time_out || rec.status === 'cancelled' || rec.status === 'absent' || rec.status === 'needs_review')
         .slice(0, 5);
 
     const todayRecords = todayAttendance || [];
     const attendanceFor = (act) => todayRecords.find(rec => rec.activity_id === act.id) || null;
-    const isOngoing = (rec) => !!rec?.time_in && !rec?.time_out;
+    const isOngoing = (rec) => !!rec?.time_in && !rec?.time_out && rec?.status !== 'needs_review';
     const isCompleted = (rec) => !!rec?.time_out;
 
     const todayActivities = activitiesList
         .filter(a => new Date(a.date).toDateString() === new Date().toDateString())
-        .filter(a => !isCompleted(attendanceFor(a)) && attendanceFor(a)?.status !== 'absent')
+        .filter(a => !['absent', 'needs_review'].includes(attendanceFor(a)?.status) && !isCompleted(attendanceFor(a)))
         .sort((a, b) => {
             const aOngoing = isOngoing(attendanceFor(a)) ? 1 : 0;
             const bOngoing = isOngoing(attendanceFor(b)) ? 1 : 0;
-            return bOngoing - aOngoing;
+            if (bOngoing !== aOngoing) return bOngoing - aOngoing;
+            const tm = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : 99999; };
+            return tm(a.start_time) - tm(b.start_time);
         });
 
     // Upcoming: only the next 3 activities are shown; the rest live behind "View All"
@@ -29,12 +32,37 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
     const [activeCapture, setActiveCapture] = useState(null);
     // Inline-expanded item. Keys are namespaced ("today-<id>" / "up-<id>" / "rec-<index>") so
     // items from different cards can never open each other.
-    const [openKey, setOpenKey] = useState(null);
+    const [openKey, setOpenKeyRaw] = useState(() => { try { const v = sessionStorage.getItem('dash_open_key'); return v === null ? null : JSON.parse(v); } catch (e) { return null; } }); const setOpenKey = (v) => setOpenKeyRaw((cur) => { const n = typeof v === 'function' ? v(cur) : v; try { if (n === null || n === undefined) sessionStorage.removeItem('dash_open_key'); else sessionStorage.setItem('dash_open_key', JSON.stringify(n)); } catch (e) {} return n; });
     const toggleOpen = (key) => setOpenKey((cur) => (cur === key ? null : key));
     const [successInfo, setSuccessInfo] = useState(null);
     const isMobile = useIsMobile();
     const isPhone = useIsMobile(600);
     const [mobileTab, setMobileTab] = useState('today');
+    // Reminders card: what the volunteer still needs to do
+    const reminders = (() => {
+        const list = [];
+        const nowD = new Date();
+        const nowMin = nowD.getHours() * 60 + nowD.getMinutes();
+        const toMinR = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+        const fmtR = (t) => { const m = toMinR(t); if (m == null) return ''; const h = Math.floor(m / 60); return `${((h + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
+        todayActivities.forEach((a) => {
+            if (attendanceFor(a)?.time_in) return;
+            const s = toMinR(a.start_time);
+            const e = toMinR(a.end_time);
+            if (s == null || (e != null && nowMin >= e)) return;
+            const open = () => {
+                setMobileTab('today');
+                setOpenKey(`today-${a.id}`);
+                if (isPhone) window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+            list.push(nowMin >= s
+                ? { key: `in-${a.id}`, tone: 'red', text: `Time In for ${a.name} (started ${fmtR(a.start_time)})`, onClick: open }
+                : { key: `in-${a.id}`, tone: 'amber', text: `${a.name} starts at ${fmtR(a.start_time)}`, onClick: open });
+        });
+        const review = (recentAttendance || []).filter((r) => r.status === 'needs_review').length;
+        if (review > 0) list.push({ key: 'review', tone: 'amber', text: `${review} attendance record${review !== 1 ? 's' : ''} under admin review`, href: route('volunteer.records') });
+        return list;
+    })();
 
     const handleCaptureSuccess = () => {
         const act = activitiesList.find(a => a.id === activeCapture?.activityId);
@@ -43,7 +71,7 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
             activityName: act?.name || 'the activity',
         });
         setActiveCapture(null);
-        router.reload({ only: ['todayAttendance', 'recentAttendance', 'totalHours', 'totalDays', 'monthDays'] });
+        router.reload({ only: ['todayAttendance', 'recentAttendance', 'totalHours', 'totalDays', 'monthDays', 'attendedCount', 'missedCount', 'monthHours', 'todayHours', 'lastMonthDone', 'lastMonthAttended', 'lastMonthMissed', 'monthAttended', 'fieldAttended', 'branchAttended', 'longestStreak', 'currentStreak', 'monthDone', 'monthScheduled', 'recordsTotal'] });
     };
 
     return (
@@ -57,25 +85,45 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
             ) : (<SetupStatus compact />)}
 
             {!isPhone && <TimedInCard activities={todayActivities} attendanceFor={attendanceFor} onStart={(activity, mode) => setActiveCapture({ activityId: activity.id, mode })} />}
+            {isMobile && <RemindersCard reminders={reminders} />}
 
-            {isMobile && (
-                <div role="tablist" style={{ display: 'flex', width: 'fit-content', gap: '2px', background: '#f3f3f4', borderRadius: '999px', padding: '2px', marginBottom: '12px' }}>
-                    {[['today', 'Today'], ['upcoming', 'Upcoming']].map(([k, label]) => (
-                        <button key={k} type="button" role="tab" aria-selected={mobileTab === k} onClick={() => setMobileTab(k)} style={{
-                            border: 'none', borderRadius: '999px', padding: '6px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                            background: mobileTab === k ? 'white' : 'transparent', color: mobileTab === k ? '#111' : '#777', boxShadow: mobileTab === k ? '0 0 0 0.5px #ececec' : 'none',
-                        }}>{label}</button>
-                    ))}
-                </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 280px', gap: '12px', marginBottom: '20px', alignItems: 'stretch' }}>
-                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: (isMobile && mobileTab !== 'today') ? 'none' : 'flex', flexDirection: 'column' }}>
-                    <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Today's Tasks</span>
-                        <span style={{ fontSize: '10px', color: '#bbb', background: '#f5f5f5', padding: '2px 8px', borderRadius: '10px' }}>
-                            {todayActivities.length} task{todayActivities.length !== 1 ? 's' : ''}
-                        </span>
+            <RingCards
+                compact={isMobile}
+                totalHours={totalHours}
+                attendedCount={attendedCount}
+                missedCount={missedCount}
+                monthHours={monthHours} todayHours={todayHours} fieldAttended={fieldAttended} branchAttended={branchAttended} lastMonthDone={lastMonthDone} lastMonthAttended={lastMonthAttended} lastMonthMissed={lastMonthMissed}
+                monthDone={monthDone}
+                monthScheduled={monthScheduled}
+                longestStreak={longestStreak}
+                currentStreak={currentStreak}
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 300px', gap: '16px', marginBottom: '20px', alignItems: 'start' }}>
+                <div style={{ minWidth: 0 }}>
+                    <div role="tablist" style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', paddingLeft: '0px' }}>
+                        {[['today', "Today's tasks", todayActivities.length], ['upcoming', 'Upcoming tasks', upcomingActivities.length]].map(([k, label, count]) => (
+                            <button key={k} type="button" role="tab" aria-selected={mobileTab === k} onClick={() => setMobileTab(k)} style={{
+                                position: 'relative', zIndex: mobileTab === k ? 2 : 1, marginBottom: mobileTab === k ? '-1px' : '0',
+                                border: '1px solid #ebebeb',
+                                borderBottom: mobileTab === k ? '1px solid white' : 'none',
+                                borderRadius: '8px 8px 0 0', background: mobileTab === k ? 'white' : '#f7f7f8',
+                                padding: mobileTab === k ? '9px 14px' : '8px 14px', fontSize: '12px', fontWeight: '600', color: mobileTab === k ? '#555' : '#999',
+                                cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '7px',
+                            }}>{label} ({count})</button>
+                        ))}
                     </div>
+
+
+
+
+
+
+
+
+
+
+                <div style={{ background: 'white', borderRadius: '0 10px 10px 10px', border: '1px solid #ebebeb', boxShadow: '0 2px 10px rgba(0,0,0,0.08)', overflow: 'hidden', display: (mobileTab !== 'today') ? 'none' : 'flex', flexDirection: 'column' }}>
                     {todayActivities.length === 0 ? (
                         <div style={{ padding: '36px', textAlign: 'center' }}>
                             <div style={{ fontSize: '11px', color: '#ccc' }}>No tasks scheduled for today</div>
@@ -102,7 +150,6 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                         }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                                            <div style={{ width: '6px', height: '32px', borderRadius: '3px', background: '#CC0000', flexShrink: 0 }} />
                                             <div style={{ minWidth: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                     <span style={{ fontSize: '12px', fontWeight: '500', color: '#111' }}>{act.name}</span>
@@ -111,6 +158,10 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                                             Ongoing
                                                         </span>
                                                     )}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '11px', color: '#CC0000' }}>
+                                                    {isOpen ? 'Hide details' : 'Show details'}
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}><path d="m6 9 6 6 6-6" /></svg>
                                                 </div>
                                             </div>
                                         </div>
@@ -128,11 +179,11 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                                     />
                                                 </div>
                                             )}
-                                            <Chevron open={isOpen} />
+                                            
                                         </div>
                                     </div>
                                     {isOpen && (
-                                        <div style={{ borderTop: '1px solid #f5f5f5', padding: '12px 18px', background: '#fafafa' }}>
+                                        <div style={{ padding: '0 18px 14px' }}>
                                             <ActivityDetails act={act} />
                                         </div>
                                     )}
@@ -142,16 +193,13 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                     )}
                     {/* Footer "View All" — goes to the Schedule page (Assigned tab, default) */}
                     <div style={{ marginTop: 'auto', padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
-                        <Link href={route('volunteer.schedule')} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
+                        <Link href={route('volunteer.schedule')} style={{ fontSize: '10.5px', color: '#333', fontWeight: '400', textDecoration: 'none' }}>
                             View All
                         </Link>
                     </div>
                 </div>
 
-                <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', display: (isMobile && mobileTab !== 'upcoming') ? 'none' : 'flex', flexDirection: 'column' }}>
-                    <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
-                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Upcoming</span>
-                    </div>
+                <div style={{ background: 'white', borderRadius: '0 10px 10px 10px', border: '1px solid #ebebeb', boxShadow: '0 2px 10px rgba(0,0,0,0.08)', overflow: 'hidden', display: (mobileTab !== 'upcoming') ? 'none' : 'flex', flexDirection: 'column' }}>
                     {upcomingActivities.length === 0 ? (
                         <div style={{ padding: isMobile ? '16px' : '32px', textAlign: 'center' }}>
                             <div style={{ fontSize: '11px', color: '#ccc' }}>No upcoming tasks</div>
@@ -171,23 +219,17 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                                             tabIndex={0}
                                             onClick={() => toggleOpen(key)}
                                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleOpen(key); }}
-                                            style={{
-                                                padding: '8px 18px',
-                                                display: 'flex', gap: '10px', alignItems: 'flex-start',
-                                                cursor: 'pointer',
-                                            }}
+                                            className="task-row"
+                                            style={{ padding: '12px 18px', cursor: 'pointer', transition: 'background 0.1s' }}
                                         >
-                                            <div style={{ width: '3px', height: '3px', borderRadius: '50%', background: '#CC0000', flexShrink: 0, marginTop: '6px' }} />
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontSize: '11px', fontWeight: '500', color: '#222' }}>{act.name}</div>
-                                                <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>
-                                                    {new Date(act.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                                </div>
+                                            <span style={{ fontSize: '12px', fontWeight: '500', color: '#111' }}>{act.name}</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '11px', color: '#CC0000' }}>
+                                                {isOpen ? 'Hide details' : 'Show details'}
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}><path d="m6 9 6 6 6-6" /></svg>
                                             </div>
-                                            <span style={{ marginTop: '3px' }}><Chevron open={isOpen} /></span>
                                         </div>
-                                        {isOpen && (
-                                            <div style={{ borderTop: '1px solid #f5f5f5', padding: '12px 18px', background: '#fafafa' }}>
+{isOpen && (
+                                            <div style={{ padding: '0 18px 14px' }}>
                                                 <ActivityDetails act={act} />
                                             </div>
                                         )}
@@ -198,44 +240,20 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                     )}
                     {/* Footer "View All" — goes to the Schedule page, landing directly on the Upcoming tab */}
                     <div style={{ marginTop: 'auto', padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
-                        <Link href={route('volunteer.schedule', { tab: 'upcoming' })} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
+                        <Link href={route('volunteer.schedule', { tab: 'upcoming' })} style={{ fontSize: '10.5px', color: '#333', fontWeight: '400', textDecoration: 'none' }}>
                             View All
                         </Link>
                     </div>
                 </div>
-            </div>
-
-            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
-                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Recent Activity</span>
                 </div>
-                {attendance.length === 0 ? (
-                    <div style={{ padding: isMobile ? '16px' : '32px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '11px', color: '#ccc' }}>No recent activity</div>
-                    </div>
-                ) : (
-                    <div>
-                        {attendance.map((rec, i) => {
-                            const key = `rec-${i}`;
-                            return (
-                                <RecentActivityRow
-                                    key={i}
-                                    rec={rec}
-                                    isLast={i === attendance.length - 1}
-                                    isOpen={openKey === key}
-                                    onToggle={() => toggleOpen(key)}
-                                />
-                            );
-                        })}
+                {!isMobile && (
+                    <div style={{ paddingTop: '32px' }}>
+                        <RemindersCard reminders={reminders} />
                     </div>
                 )}
-                {/* Footer "View all" — moved from the header to the bottom, goes to My Records */}
-                <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
-                    <Link href={route('volunteer.records')} style={{ fontSize: '10.5px', color: '#CC0000', fontWeight: '600', textDecoration: 'none' }}>
-                        View all →
-                    </Link>
-                </div>
             </div>
+
+            <RecentRecordsCard recordsTotal={recordsTotal} attendance={attendance} isMobile={isMobile} openKey={openKey} toggleOpen={toggleOpen} />
 
             {activeCapture && (
                 <AttendanceCapture
@@ -246,13 +264,11 @@ export default function VolunteerDashboard({ auth, totalHours, totalDays, monthD
                 />
             )}
 
-            {successInfo && (
-                <ScanSuccessModal
-                    mode={successInfo.mode}
-                    activityName={successInfo.activityName}
-                    onClose={() => setSuccessInfo(null)}
-                />
-            )}
+            <TimeInSuccessModal
+                open={!!successInfo}
+                type={successInfo?.mode === 'checkout' ? 'out' : 'in'}
+                onClose={() => setSuccessInfo(null)}
+            />
 
         </VolunteerShell>
     );
@@ -428,8 +444,8 @@ function TimedInCard({ activities, attendanceFor, onStart }) {
                     <div style={{ fontSize: '15px', fontWeight: '600', color: '#111' }}>{act.name}</div>
                     <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{new Date().toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
                 </div>
-                <RingClockButton mode="checkout" isOngoing={true} record={rec} activity={act} canProceed={true} onPress={() => { if (setup.face_done) onStart(act, 'checkout'); }} />
-                <RunningTimer record={rec} activity={act} />
+                {rec?.status === 'needs_review' ? (<div style={{ padding: "14px 18px", margin: "0 auto 16px", maxWidth: "320px", borderRadius: "10px", background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: "13px" }}>Time out is closed. Your attendance was sent to the admin for review.</div>) : (<RingClockButton mode="checkout" isOngoing={true} record={rec} activity={act} canProceed={true} onPress={() => { if (setup.face_done) onStart(act, 'checkout'); }} />)}
+                {rec?.status !== 'needs_review' && <RunningTimer record={rec} activity={act} />}
             </div>
         </div>
     );
@@ -437,7 +453,7 @@ function TimedInCard({ activities, attendanceFor, onStart }) {
 
 function TaskAttendanceButton({ act, record, onStart }) {
     const { setup } = useVolunteerShell();
-    const faceReady = !!setup.face_done;
+    const faceReady = !!setup.face_done; if (record?.status === 'needs_review') { return (<span style={{ fontSize: '10px', fontWeight: '600', color: '#b45309', background: '#fffbeb', borderRadius: '5px', padding: '3px 10px', whiteSpace: 'nowrap' }}>Under review</span>); }
 
     if (record?.time_out) {
         return (
@@ -494,6 +510,80 @@ function recordToActivity(rec) {
     };
 }
 
+function RecentRecordsCard({ recordsTotal, attendance, isMobile, openKey, toggleOpen }) {
+    const rows = (attendance || []).filter((r) => !!r.time_out || ['absent', 'cancelled', 'needs_review', 'rejected'].includes(r.status));
+    const goToRecord = (r) => router.visit(route('volunteer.records', { record: r.id }));
+    const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '\u2014');
+    const fmtTime = (v) => (v ? new Date(v).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : '\u2014');
+    const statusOf = (r) => {
+        if (r.status === 'absent') return { label: 'Absent', bg: '#fef2f2', color: '#CC0000' };
+        if (r.status === 'needs_review') return { label: 'Needs Review', bg: '#fffbeb', color: '#b45309' };
+        if (r.status === 'rejected') return { label: 'Rejected', bg: '#fef2f2', color: '#CC0000' };
+        if (!r.time_out) return { label: 'Ongoing', bg: '#fffbeb', color: '#b45309' };
+        return { label: 'Present', bg: '#f0fdf4', color: '#16a34a' };
+    };
+    return (
+        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.08)' }}>
+            <style>{`
+                .dash-table { border-collapse: collapse; width: 100%; }
+                .dash-table th { font-size: 10px; font-weight: 600; color: #999; text-align: left; padding: 10px 18px; background: #fafafa; border-bottom: 1px solid #f5f5f5; white-space: nowrap; }
+                .dash-table td { font-size: 12px; color: #333; padding: 12px 18px; border-bottom: 1px solid #f5f5f5; white-space: nowrap; }
+                .dash-table tbody tr.dash-row { cursor: pointer; transition: background 0.1s; }
+                .dash-table tbody tr.dash-row:hover td { background: #fafafa; }
+                .dash-table tbody tr.dash-open td { background: #fafafa; }
+            `}</style>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Recent Activity</span>
+                <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#999' }}>Showing {rows.length} of {Math.max(Number(recordsTotal) || 0, rows.length)}</span>
+            </div>
+            {rows.length === 0 ? (
+                <div style={{ padding: isMobile ? '16px' : '32px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', color: '#ccc' }}>No recent activity</div>
+                </div>
+            ) : (
+                <div style={{ overflowX: 'auto' }}>
+                    <table className="dash-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Activity</th><th>Where</th><th>Assigned by</th>
+                                <th>Status</th>
+                                <th>Time In</th>
+                                <th>Time Out</th><th>Assignment</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((rec, i) => {
+                                const key = `rec-${i}`;
+                                const isOpen = openKey === key;
+                                const s = statusOf(rec);
+                                return (
+                                    <tr key={rec.id || i} className="dash-row" tabIndex={0} onClick={() => goToRecord(rec)} onKeyDown={(e) => { if (e.key === 'Enter') goToRecord(rec); }}>
+                                        <td style={{ fontWeight: '500', color: '#111' }}>{fmtDate(rec.date)}</td>
+                                        <td>{rec.activity_name || rec.activity?.name || '-'}</td>
+                                        <td title={rec.activity?.location_name || ''} style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', color: '#666' }}>{rec.activity?.location_name || '-'}</td>
+                                        <td style={{ color: '#666' }}>{rec.activity?.assigned_by || '-'}</td>
+                                        <td>
+                                            <span style={{ background: s.bg, color: s.color, fontSize: '10.5px', fontWeight: '600', padding: '3px 10px', borderRadius: '10px' }}>{s.label}</span>
+                                        </td>
+                                        <td style={{ color: '#16a34a' }}>{fmtTime(rec.time_in)}</td>
+                                        <td style={{ color: '#CC0000' }}>{fmtTime(rec.time_out)}</td>
+                                        <td title={rec.activity?.description || ''} style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', color: '#666' }}>{rec.activity?.description || '-'}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
+                <Link href={route('volunteer.records')} style={{ fontSize: '10.5px', color: '#333', fontWeight: '400', textDecoration: 'none' }}>
+                    View all
+                </Link>
+            </div>
+        </div>
+    );
+}
 function RecentActivityRow({ rec, isLast, isOpen, onToggle }) {
     const cancelled = rec.status === 'cancelled' || rec.status === 'absent';
     const name = rec.activity_name || rec.activity?.name || 'Activity';
@@ -552,7 +642,7 @@ function RecentActivityRow({ rec, isLast, isOpen, onToggle }) {
             </div>
 
             {isOpen && (
-                <div style={{ borderTop: '1px solid #f5f5f5', padding: '16px 18px', background: '#fafafa' }}>
+                <div style={{ padding: '0 18px 16px' }}>
                     <ActivityDetails act={recordToActivity(rec)} />
                 </div>
             )}
@@ -568,107 +658,55 @@ function CancelledIcon() {
     return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
 }
 
-function ScanSuccessModal({ mode, activityName, onClose }) {
-    const isCheckin = mode === 'checkin';
-
-    return (
-        <div
-            role="presentation"
-            onClick={onClose}
-            style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-                display: 'grid', placeItems: 'center', padding: '16px', zIndex: 400,
-                fontFamily: "'Inter', sans-serif",
-            }}
-        >
-            <div
-                role="dialog"
-                aria-modal="true"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                    background: 'white', borderRadius: '16px', width: '100%', maxWidth: '320px',
-                    overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center',
-                    padding: '28px 24px 24px',
-                }}
-            >
-                <div style={{
-                    width: '52px', height: '52px', borderRadius: '50%', margin: '0 auto 14px',
-                    background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                </div>
-
-                <div style={{ fontSize: '15px', fontWeight: '700', color: '#111', marginBottom: '6px' }}>
-                    {isCheckin ? 'Time In Successful' : 'Time Out Successful'}
-                </div>
-
-                <div style={{ fontSize: '12.5px', color: '#666', lineHeight: '1.6', marginBottom: '18px' }}>
-                    {isCheckin
-                        ? <>You're now <strong style={{ color: '#b45309' }}>Ongoing</strong> for <strong>{activityName}</strong>.</>
-                        : <>Your hours for <strong>{activityName}</strong> have been recorded.</>
-                    }
-                </div>
-
-                <button
-                    type="button"
-                    onClick={onClose}
-                    style={{
-                        width: '100%', padding: '11px', borderRadius: '10px', border: 'none',
-                        background: '#CC0000', color: 'white', fontSize: '13px', fontWeight: '600',
-                        cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                >
-                    Got it
-                </button>
-            </div>
-        </div>
-    );
-}
-
 /* ---------------- Inline activity details — stacked in a single column ---------------- */
 
 function ActivityDetails({ act }) {
-    const formatTimeRange = () => {
-        if (!act.start_time) return '—';
-        const fmt = (t) => {
-            const [h, m] = t.split(':').map(Number);
-            const d = new Date();
-            d.setHours(h, m, 0, 0);
-            return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
-        };
-        return act.end_time ? `${fmt(act.start_time)} – ${fmt(act.end_time)}` : fmt(act.start_time);
+    const detailLabelWidth = '68px';
+
+    const fmt = (t) => {
+        const [h, m] = String(t).split(':').map(Number);
+        const d = new Date();
+        d.setHours(h, m, 0, 0);
+        return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true });
     };
+
+    const timeText = act.start_time
+        ? (act.end_time ? `${fmt(act.start_time)} \u2013 ${fmt(act.end_time)}` : fmt(act.start_time))
+        : null;
 
     const assignedBy = act.assigned_by_name
         ? `${act.assigned_by_role ? `${act.assigned_by_role} / ` : ''}${act.assigned_by_name}`
         : (act.assigned_by || null);
 
-    const fields = [
-        { icon: <CalendarIcon />, label: 'Date', value: act.date ? new Date(act.date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : '—' },
-        { icon: <ClockIcon />, label: 'Time', value: formatTimeRange() },
-        { icon: <PinIcon />, label: 'Location', value: act.location_name },
-        { icon: <ClipboardIcon />, label: 'Assignment', value: act.description || act.assignment || 'No assignment specified.' },
-        { icon: <ClipboardIcon />, label: 'Attendance Method', value: act.attendance_method === 'fingerprint' ? 'Fingerprint' : (act.attendance_method === 'face' || act.attendance_method === 'face_recognition' ? 'Face Recognition' : (act.attendance_method ? act.attendance_method : null)) },
-        ...(assignedBy ? [{ icon: <UserIcon />, label: 'Assigned By', value: assignedBy }] : []),
-    ];
+    const dateText = act.date
+        ? new Date(act.date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+        : null;
+    const whenText = [dateText, timeText].filter(Boolean).join(' \u00B7 ');
+
+    const detailRows = [
+        { label: 'When', value: whenText },
+        { label: 'Where', value: act.location_name },
+        { label: 'Assignment', value: act.description || act.assignment },
+        { label: 'Assigned by', value: assignedBy },
+    ].filter((r) => r.value);
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {fields.map((f) => (
-                <div key={f.label} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                    <div style={{ color: '#bbb', marginTop: '2px', flexShrink: 0 }}>{f.icon}</div>
-                    <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '10px', fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{f.label}</div>
-                        <div style={{ fontSize: '12.5px', color: '#222', marginTop: '2px', lineHeight: '1.5', wordBreak: 'break-word' }}>{f.value ?? '—'}</div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {detailRows.map((r, i) => (
+                <div key={r.label} style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '8px', flexShrink: 0 }}>
+                        <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#bbb', marginTop: '5px', flexShrink: 0 }} />
+                        {i < detailRows.length - 1 && <div style={{ width: '1px', flex: 1, background: '#e5e5e5', marginTop: '3px' }} />}
+                    </div>
+                    <div style={{ paddingBottom: i < detailRows.length - 1 ? '12px' : 0, minWidth: 0 }}>
+                        <div style={{ fontSize: '11px', color: '#888', lineHeight: '1.4' }}>{r.label}</div>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#111', lineHeight: '1.5', wordBreak: 'break-word' }}>{r.value}</div>
                     </div>
                 </div>
             ))}
         </div>
     );
 }
-
 function Chevron({ open }) {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
@@ -864,4 +902,188 @@ function SetupStatus({ compact = false }) {
             )}
         </div>
     );
+}
+
+function RemindersCard({ reminders }) {
+    const n = reminders.length;
+    const dotColor = { red: '#CC0000', amber: '#b45309' };
+    const rowStyle = { display: 'flex', alignItems: 'center', gap: '10px', width: '100%', boxSizing: 'border-box', padding: '12px 16px', background: 'white', border: 'none', fontFamily: 'inherit', fontSize: '12px', color: '#222', textAlign: 'left', textDecoration: 'none', cursor: 'pointer' };
+    const inner = (r) => (
+        <>
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: dotColor[r.tone] || '#b45309', flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 0 }}>{r.text}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><polyline points="9 6 15 12 9 18" /></svg>
+        </>
+    );
+    return (
+        <div role="region" aria-label="Reminders" style={{ display: 'flex', background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', borderLeft: '4px solid #9b1c1c', overflow: 'hidden', marginBottom: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.08)' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', fontWeight: '600', color: '#9b1c1c' }}><ReminderPinIcon />Reminders</span>
+                    <span style={{ fontSize: '11px', fontWeight: '500', color: n > 0 ? '#b45309' : '#16a34a' }}>{n > 0 ? `${n} need${n === 1 ? 's' : ''} your attention` : 'All caught up'}</span>
+                </div>
+                {n === 0 ? (
+                    <div style={{ padding: '14px 16px', fontSize: '12px', color: '#888' }}>Nothing to do right now.</div>
+                ) : reminders.map((r, i) => {
+                    const st = { ...rowStyle, borderBottom: i < n - 1 ? '1px solid #f5f5f5' : 'none' };
+                    return r.href
+                        ? (<Link key={r.key} href={r.href} style={st}>{inner(r)}</Link>)
+                        : (<button key={r.key} type="button" onClick={r.onClick} style={st}>{inner(r)}</button>);
+                })}
+            </div>
+        </div>
+    );
+}
+
+function ReminderPinIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4" />
+            <path d="M9 15l-4.5 4.5" />
+            <path d="M14.5 4l5.5 5.5" />
+        </svg>
+    );
+}
+function RingGauge({ value, frac, color }) {
+    const r = 21;
+    const circ = 2 * Math.PI * r;
+    const small = String(value).length > 3;
+    return (
+        <svg width="54" height="54" viewBox="0 0 54 54" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <circle cx="27" cy="27" r={r} fill="none" stroke="#ececee" strokeWidth="7" />
+            {frac > 0 && <circle cx="27" cy="27" r={r} fill="none" stroke={color} strokeWidth="7" strokeDasharray={`${circ * frac} ${circ}`} transform="rotate(-90 27 27)" />}
+            <text x="27" y={small ? 30 : 31} textAnchor="middle" fontSize={small ? 11 : 13} fontWeight="600" fill="#111">{value}</text>
+        </svg>
+    );
+}
+
+function RingCards({ compact, totalHours, attendedCount, missedCount, monthHours, todayHours, fieldAttended, branchAttended, lastMonthDone, lastMonthAttended, lastMonthMissed, monthDone, monthScheduled, longestStreak, currentStreak }) {
+    const card = { position: 'relative', flex: compact ? '0 0 230px' : '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '10px', background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', padding: '14px 16px', boxShadow: '0 2px 10px rgba(0,0,0,0.08)', boxSizing: 'border-box' };
+    const row = { display: 'flex', alignItems: 'center', gap: '14px' };
+    const title = { fontSize: '12px', fontWeight: '600', color: '#111', marginBottom: '6px' };
+    const line = { fontSize: '10.5px', color: '#666', lineHeight: 1.7 };
+    const dot = (c) => <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: c, marginRight: '6px' }} />;
+    const fmt = (n) => String(Math.round((Number(n) || 0) * 10) / 10);
+    const RingPill = ({ kind, children }) => {
+        const m = { ok: ['rgba(63,166,106,0.12)', '#2f7d52'], red: ['rgba(204,0,0,0.08)', '#CC0000'], gray: ['#f1f1f3', '#666'] }[kind];
+        return <span style={{ alignSelf: 'flex-start', fontSize: '10.5px', fontWeight: '500', padding: '2px 9px', borderRadius: '999px', background: m[0], color: m[1], whiteSpace: 'nowrap' }}>{children}</span>;
+    };
+
+    const Arrow = ({ down }) => (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: '4px', verticalAlign: '-1px' }}>
+            {down ? <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></> : <><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></>}
+        </svg>
+    );
+    const TrendPill = ({ diff, unit, fallback }) => {
+        if (diff === null || diff === undefined || Number.isNaN(diff)) return fallback;
+        if (diff === 0) return <RingPill kind="gray">Same as last month</RingPill>;
+        return <RingPill kind={diff > 0 ? 'ok' : 'red'}><Arrow down={diff < 0} />{diff > 0 ? '+' : '\u2212'}{Math.abs(diff)}{unit} vs last month</RingPill>;
+    };
+    const attDiff = (nowPct) => {
+        if (lastMonthAttended == null || nowPct === null) return null;
+        const lt = (Number(lastMonthAttended) || 0) + (Number(lastMonthMissed) || 0);
+        if (lt === 0) return null;
+        return nowPct - Math.round(((Number(lastMonthAttended) || 0) / lt) * 100);
+    };
+
+    const MILESTONES = [10, 25, 50, 100, 200, 500, 1000];
+    const hours = Number(totalHours) || 0;
+    const nextMs = MILESTONES.find((m) => m > hours) || null;
+    const prevMs = [...MILESTONES].reverse().find((m) => m <= hours) || 0;
+    const hoursPct = nextMs ? Math.round(((hours - prevMs) / (nextMs - prevMs)) * 100) : 100;
+
+    const attended = Number(attendedCount) || 0;
+    const missed = Number(missedCount) || 0;
+    const total = attended + missed;
+    const pct = total > 0 ? Math.round((attended / total) * 100) : null;
+
+    const mDone = Number(monthDone) || 0;
+    const mSched = Number(monthScheduled) || 0;
+    const monthPct = mSched > 0 ? Math.min(100, Math.round((mDone / mSched) * 100)) : null;
+
+    const best = Number(longestStreak) || 0;
+    const cur = Number(currentStreak) || 0;
+    const streakFrac = best > 0 ? Math.min(1, cur / best) : 0;
+    const fld = Number(fieldAttended) || 0;
+    const brn = Number(branchAttended) || 0;
+    const typeTotal = fld + brn;
+    const fieldPct = typeTotal > 0 ? Math.round((fld / typeTotal) * 100) : 0;
+    const streakNote = best === 0 ? 'Complete an activity to start' : (cur >= best ? 'Personal best' : `${best - cur} more to beat it`);
+
+    return (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', overflowX: compact ? 'auto' : 'visible', paddingBottom: compact ? '6px' : 0 }}>
+            <div style={card}><Link href={safeRoute('volunteer.records')} aria-label="Open records" style={{ position: 'absolute', inset: 0, borderRadius: '10px', color: '#9a9aa2', textDecoration: 'none' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ position: 'absolute', top: '8px', right: '8px' }}><line x1="7" y1="17" x2="17" y2="7" /><polyline points="8 7 17 7 17 16" /></svg></Link>
+                <div style={row}>
+                    <RingGauge value={`${hoursPct}%`} frac={hoursPct / 100} color="#3fa66a" />
+                    <div>
+                        <div style={title}>Volunteer hours</div>
+                        <div style={{ fontSize: '10px', color: '#9a9aa2', marginBottom: '2px' }}>Since joining</div>
+                        <div style={line}>{dot('#3fa66a')}{nextMs ? `${fmt(hours)} of ${nextMs} hrs` : `${fmt(hours)} hrs total`}</div>
+                        <div style={line}>{dot('#d4d4d8')}{attended} {attended === 1 ? 'activity' : 'activities'} attended</div>
+                    </div>
+                </div>
+                {Number(todayHours) >= 0.05 ? <RingPill kind="ok"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: '4px', verticalAlign: '-1px' }}><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>+{fmt(todayHours)} hrs today</RingPill> : <RingPill kind="gray"><Arrow />+0 hrs today</RingPill>}
+            </div>
+            <div style={card}>
+                <Link href={safeRoute('volunteer.records')} aria-label="Open activity types in records" style={{ position: 'absolute', inset: 0, borderRadius: '10px', color: '#9a9aa2', textDecoration: 'none' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ position: 'absolute', top: '8px', right: '8px' }}><line x1="7" y1="17" x2="17" y2="7" /><polyline points="8 7 17 7 17 16" /></svg></Link>
+                <div style={row}>
+                    <RingGauge value={typeTotal === 0 ? '\u2013' : `${fieldPct}%`} frac={typeTotal === 0 ? 0 : fieldPct / 100} color="#CC0000" />
+                    <div>
+                        <div style={title}>Activity types</div>
+                        <div style={{ fontSize: '10px', color: '#9a9aa2', marginBottom: '2px' }}>Since joining</div>
+                        <div style={line}>{dot('#CC0000')}{fld} Field</div>
+                        <div style={line}>{dot('#d4d4d8')}{brn} Branch</div>
+                    </div>
+                </div>
+                {typeTotal === 0 ? <RingPill kind="gray">No activities yet</RingPill> : (fld === brn ? <RingPill kind="gray">Balanced</RingPill> : <RingPill kind="ok"><Arrow />{fld > brn ? 'Mostly Field' : 'Mostly Branch'}</RingPill>)}
+            </div>
+            <div style={card}><Link href={safeRoute('volunteer.records')} aria-label="Open attendance in records" style={{ position: 'absolute', inset: 0, borderRadius: '10px', color: '#9a9aa2', textDecoration: 'none' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ position: 'absolute', top: '8px', right: '8px' }}><line x1="7" y1="17" x2="17" y2="7" /><polyline points="8 7 17 7 17 16" /></svg></Link>
+                <div style={row}>
+                    <RingGauge value={pct === null ? '\u2013' : `${pct}%`} frac={pct === null ? 0 : pct / 100} color="#3fa66a" />
+                    <div>
+                        <div style={title}>Attendance rate</div>
+                        <div style={{ fontSize: '10px', color: '#9a9aa2', marginBottom: '2px' }}>Since joining</div>
+                        <div style={line}>{dot('#3fa66a')}{attended} Attended</div>
+                        <div style={line}>{dot('#CC0000')}{missed} Missed</div>
+                    </div>
+                </div>
+                <TrendPill diff={attDiff(pct)} unit="%" fallback={<RingPill kind="gray"><Arrow />+0% vs last month</RingPill>} />
+            </div>
+            <div style={card}>
+                <div style={row}>
+                    <RingGauge value={best} frac={streakFrac} color="#e08a00" />
+                    <div>
+                        <div style={title}>Longest streak</div>
+                        <div style={line}>{dot('#e08a00')}{cur} in a row now</div>
+                        <div style={line}>{dot('#d4d4d8')}{streakNote}</div>
+                    </div>
+                </div>
+                {best === 0 ? <RingPill kind="gray">No streak yet</RingPill> : (cur >= best ? <RingPill kind="red"><Arrow />Keep it up!</RingPill> : <RingPill kind="gray">Best: {best}</RingPill>)}
+            </div>
+        </div>
+    );
+}
+function taskDateLabel(d) {
+    const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[parseInt(m[2], 10) - 1]} ${parseInt(m[3], 10)}, ${m[1]}`;
+}
+
+function taskTimeLabel(t) {
+    const s = String(t || '').trim();
+    if (!s) return '';
+    if (/[ap]m/i.test(s)) return s;
+    const m = s.match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return s;
+    const h = parseInt(m[1], 10);
+    return `${h % 12 || 12}:${m[2]} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+function taskWhenLabel(act) {
+    const d = taskDateLabel(act && act.date);
+    const a = taskTimeLabel(act && act.start_time);
+    const b = taskTimeLabel(act && act.end_time);
+    const t = a && b ? `${a} \u2013 ${b}` : (a || b);
+    return [d, t].filter(Boolean).join(' \u00B7 ');
 }

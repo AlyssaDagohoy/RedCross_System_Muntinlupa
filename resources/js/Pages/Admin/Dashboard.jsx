@@ -21,7 +21,7 @@ const ARRIVAL_EXT = {
     not_in: { label: 'Not in yet', style: { background: '#f0f0f0', color: '#666' } },
 };
 
-const card = { background: 'white', borderRadius: '12px', border: '1px solid #ebebeb', borderLeft: '4px solid #A32D2D', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.06), 0 12px 24px rgba(0,0,0,0.05)', overflow: 'hidden' };
+const card = { background: 'white', borderRadius: '12px', border: '1px solid #ebebeb', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.06), 0 12px 24px rgba(0,0,0,0.05)', overflow: 'hidden' };
 const cardHead = { padding: '14px 18px', borderBottom: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' };
 const cardTitle = { fontSize: '12px', fontWeight: '600', color: '#111' };
 const cardFoot = { padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' };
@@ -41,22 +41,25 @@ function UpDetail({ label, icon, children }) {
         </div>
     );
 }
-function ActivityRow({ a, last, onOpen }) {
+function ActivityRow({ a, last, onOpen, open, extra, compact }) {
+    const toggle = () => onOpen && onOpen(open ? null : a);
     const statusLabel = String(a.status || 'UPCOMING').charAt(0) + String(a.status || 'UPCOMING').slice(1).toLowerCase();
     return (
+        <div style={{ borderBottom: last ? 'none' : '1px solid #f5f5f5', background: open ? '#fafafa' : 'transparent' }}>
         <div
             role="button"
             tabIndex={0}
-            onClick={() => onOpen && onOpen(a)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen && onOpen(a); } }}
-            style={{ padding: '12px 18px', borderBottom: last ? 'none' : '1px solid #f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}
+            onClick={toggle}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+            style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}
         >
             <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <Link href={route('admin.activities.edit', a.id)} onClick={(e) => e.stopPropagation()} style={{ fontSize: '13px', fontWeight: '600', color: '#111', textDecoration: 'none' }}>{a.name}</Link>
                     <span style={{ ...tagBase, ...(STATUS_STYLES[a.status] || STATUS_STYLES.UPCOMING) }}>{statusLabel}</span>
                 </div>
-                <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>{a.start} &ndash; {a.end} &middot; {a.location_name}</div>
+                {compact ? (<div style={{ fontSize: '12px', color: '#888', marginTop: '3px' }}>{a.date} &middot; {a.start} &ndash; {a.end}</div>) : (<div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>{a.start} &ndash; {a.end} &middot; {a.location_name}</div>)}
+                <div style={{ fontSize: '11.5px', color: '#CC0000', marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>{open ? 'Hide details' : 'Show details'}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none' }}><path d="M6 9l6 6 6-6" /></svg></div>
             </div>
             <div style={{ flexShrink: 0 }}>
                 {a.volunteers_count > 0 ? (
@@ -65,6 +68,8 @@ function ActivityRow({ a, last, onOpen }) {
                     <span style={{ fontSize: '11px', fontWeight: '600', color: '#b91c1c', background: '#fee2e2', padding: '3px 10px', borderRadius: '20px' }}>No volunteers yet</span>
                 )}
             </div>
+        </div>
+        {open && extra}
         </div>
     );
 }
@@ -78,6 +83,39 @@ function DetailRow({ label, value }) {
     );
 }
 
+function StatCard({ href, title, sub, ring, lines = [], pill }) {
+    const R = 20;
+    const C = 2 * Math.PI * R;
+    const frac = ring.max > 0 ? Math.min(1, Math.max(0, ring.value / ring.max)) : 0;
+    const tone = ({
+        good:    { background: '#e9f8ee', color: '#15803d' },
+        warn:    { background: '#fff4e0', color: '#b45309' },
+        neutral: { background: '#f1f2f4', color: '#555' },
+    })[pill.tone] || { background: '#f1f2f4', color: '#555' };
+    return (
+        <Link href={href} className="ad-stat" style={{ display: 'block', position: 'relative', textDecoration: 'none', background: '#fff', border: '1px solid #ebebeb', borderRadius: '14px', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.05), 0 4px 8px rgba(0,0,0,0.04)', transition: 'box-shadow .15s' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ position: 'absolute', top: '12px', right: '12px' }}><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <svg width="52" height="52" viewBox="0 0 52 52" role="img" aria-label={`${title}: ${ring.center}`} style={{ flexShrink: 0 }}>
+                    <circle cx="26" cy="26" r={R} fill="none" stroke="#eeeeee" strokeWidth="6" />
+                    {frac > 0 && <circle cx="26" cy="26" r={R} fill="none" stroke={ring.color} strokeWidth="6" strokeLinecap={frac < 1 ? 'round' : 'butt'} strokeDasharray={`${frac * C} ${C}`} transform="rotate(-90 26 26)" />}
+                    <text x="26" y="30" textAnchor="middle" fontSize={String(ring.center).length > 3 ? 11 : 14} fontWeight="600" fill="#111">{ring.center}</text>
+                </svg>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#111', paddingRight: '14px' }}>{title}</div>
+                    <div style={{ fontSize: '11px', color: '#aaa', marginTop: '2px' }}>{sub}</div>
+                    {lines.map((l, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#555', marginTop: i === 0 ? '6px' : '2px' }}>
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: l.dot, flexShrink: 0 }} />{l.text}
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <span style={{ display: 'inline-block', marginTop: '12px', fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '999px', ...tone }}>{pill.text}</span>
+        </Link>
+    );
+}
+
 export default function AdminDashboard({
     attendance = { present: 0, late: 0, absent: 0 },
     todayPresent = [],
@@ -87,6 +125,7 @@ export default function AdminDashboard({
     branchActivities = [],
     reminders = [],
     upcoming = [],
+    stats = null,
 }) {
     const [open, setOpen] = useState(false);
     const [selected, setSelected] = useState(null);
@@ -138,9 +177,42 @@ export default function AdminDashboard({
                 .fab-btn { width: 54px; height: 54px; border-radius: 50%; background: #CC0000; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(204,0,0,0.35); text-decoration: none; transition: background .15s, transform .15s; }
                 .fab-btn:hover { background: #aa0000; transform: scale(1.06); }
                 @media (max-width: 800px) { .ad-split { grid-template-columns: 1fr !important; } }
-                .ad-next-spacer { height: 31px; }
+                .ad-next-spacer { height: 22px; }
                 @media (max-width: 800px) { .ad-next-spacer { display: none; } }
             `}</style>
+
+            {/* Stat cards */}
+            <style>{`
+                .ad-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+                .ad-stat:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.07), 0 8px 16px rgba(0,0,0,0.07) !important; }
+                @media (max-width: 1100px) { .ad-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+                @media (max-width: 520px) { .ad-stats { grid-template-columns: 1fr; } }
+            `}</style>
+            {stats && (() => {
+                const sign = (n) => (n >= 0 ? '+' + n : String(n));
+                const arrow = (n) => (n >= 0 ? '\u2191 ' : '\u2193 ');
+                const a = stats.active, ac = stats.activities, p = stats.participation, ia = stats.inactive;
+                return (
+                    <div className="ad-stats">
+                        <StatCard href={route('admin.volunteers')} title="Active volunteers" sub="Registered volunteers"
+                            ring={{ value: Math.max(0, a.count - ia.count), max: a.count, color: '#2E9E5B', center: String(a.count) }}
+                            lines={[{ dot: '#2E9E5B', text: Math.max(0, a.count - ia.count) + ' recently active' }, { dot: '#c4c7ce', text: ia.count + ' not active lately' }]}
+                            pill={{ text: arrow(a.new_this_month) + sign(a.new_this_month) + ' this month', tone: a.new_this_month > 0 ? 'good' : 'neutral' }} />
+                        <StatCard href={route('admin.activities.index')} title="Activities this month" sub="This month"
+                            ring={{ value: ac.done, max: ac.this_month, color: '#CC0000', center: String(ac.this_month) }}
+                            lines={[{ dot: '#CC0000', text: ac.done + ' done' }, { dot: '#c4c7ce', text: ac.left + ' left' }]}
+                            pill={{ text: arrow(ac.diff) + sign(ac.diff) + ' vs last month', tone: ac.diff > 0 ? 'good' : 'neutral' }} />
+                        <StatCard href={route('admin.attendance.index')} title="Volunteer participation" sub="This month"
+                            ring={{ value: p.pct, max: 100, color: '#2E9E5B', center: p.pct + '%' }}
+                            lines={[{ dot: '#2E9E5B', text: p.attended + ' attended' }, { dot: '#CC0000', text: p.missed + ' missed' }]}
+                            pill={{ text: arrow(p.diff) + sign(p.diff) + '% vs last month', tone: p.diff > 0 ? 'good' : 'neutral' }} />
+                        <StatCard href={route('admin.volunteers')} title="Inactive volunteers" sub="No attendance in 30 days"
+                            ring={{ value: ia.count, max: a.count, color: '#E08A00', center: String(ia.count) }}
+                            lines={[{ dot: '#E08A00', text: ia.count + ' of ' + a.count + ' volunteers' }, { dot: '#c4c7ce', text: ia.count > 0 ? 'Worth a follow-up' : 'Everyone is active' }]}
+                            pill={{ text: ia.count > 0 ? 'Needs follow-up' : 'All good', tone: ia.count > 0 ? 'warn' : 'good' }} />
+                    </div>
+                );
+            })()}
 
             {/* Attendance + Activities (left) and Reminders (right) */}
             <style>{`
@@ -149,30 +221,53 @@ export default function AdminDashboard({
             <div className="ad-main" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.7fr) minmax(0, 1fr)', gap: '12px', alignItems: 'start', marginBottom: '12px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
 
-                    {/* Today tabs */}
-                    <div role="tablist" style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', borderBottom: '1px solid #e5e5e5' }}>
-                        {[['attendance', "Today's attendance"], ['activities', "Today's activities"]].map(([k, label]) => (
-                            <button key={k} type="button" role="tab" aria-selected={tdTab === k} onClick={() => setTdTab(k)} style={{ border: 'none', borderBottom: '2px solid ' + (tdTab === k ? '#CC0000' : 'transparent'), marginBottom: '-1px', background: 'transparent', color: tdTab === k ? '#222' : '#777', fontWeight: tdTab === k ? '600' : '500', borderRadius: '0', padding: '8px 14px', fontSize: '12.5px', cursor: 'pointer', fontFamily: 'inherit' }}>{label}</button>
-                        ))}
+                    {/* Today tabs conn */}
+                    <div role="tablist" style={{ display: 'flex', gap: '4px', alignItems: 'flex-end', flexWrap: 'wrap', position: 'relative', zIndex: 2, marginBottom: '-13px' }}>
+                        {[['attendance', "Today's attendance"], ['activities', "Today's activities"]].map(([k, label]) => {
+                            const on = tdTab === k;
+                            return (
+                                <button key={k} type="button" role="tab" aria-selected={on} onClick={() => setTdTab(k)} style={{
+                                    padding: '9px 16px', fontSize: '12.5px', fontWeight: '500', fontFamily: 'inherit', cursor: 'pointer',
+                                    borderRadius: '10px 10px 0 0',
+                                    background: on ? '#fff' : '#efefef',
+                                    color: on ? '#4b4b4b' : '#a3a3a3',
+                                    border: '1px solid ' + (on ? '#e3e3e3' : '#e8e8e8'),
+                                    borderBottom: '1px solid ' + (on ? '#fff' : '#ececec'),
+                                }}>{label}</button>
+                            );
+                        })}
                     </div>
                     {tdTab === 'attendance' && (
                     /* Attendance */
-                    <div style={{ background: '#fff', border: '1px solid #ececec', borderLeft: '4px solid #A32D2D', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.06), 0 12px 24px rgba(0,0,0,0.05)', borderRadius: '12px', padding: '12px 14px 8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Today&apos;s attendance</span>
-                            <span style={{ fontSize: '18px', fontWeight: '600', color: '#111', lineHeight: 1 }}>
-                                {attendance.present}
-                                <span style={{ fontSize: '12px', fontWeight: '400', color: '#999' }}> / {attendance.present + attendance.absent}</span>
-                            </span>
+                    <div style={{ background: '#fff', border: '1px solid #ececec', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.06), 0 12px 24px rgba(0,0,0,0.05)', borderRadius: '0 12px 12px 12px', position: 'relative', zIndex: 1, padding: '12px 14px 8px' }}>
+                        {/* att-ring */}
+                        {(() => {
+                            const present = attendance.present || 0;
+                            const total = present + (attendance.absent || 0);
+                            const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+                            return (
+                                <div style={{ margin: '0 0 6px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#333' }}>{present} of {total} checked in</span>
+                                        <span style={{ fontSize: '11px', color: '#999' }}>{pct}%</span>
+                                    </div>
+                                    <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`Attendance: ${present} of ${total} present`} style={{ height: '3px', borderRadius: '999px', background: '#e8e6e0', overflow: 'hidden', marginTop: '5px' }}>
+                                        <div style={{ width: pct + '%', height: '100%', background: '#15803d', borderRadius: '999px', transition: 'width .3s ease' }} />
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                        <div role="tablist" style={{ display: 'flex', justifyContent: 'flex-start', gap: '4px', margin: '0 0 2px' }}>
+                            {[['present', 'Present', attendance.present || 0, '#e7f5ee', '#0F6E56'], ['absent', 'Absent', attendance.absent || 0, '#fdecec', '#C8102E']].map(([key, label, count, bg, fg]) => {
+                                const on = cardTab === key;
+                                return (
+                                    <button key={key} type="button" role="tab" aria-selected={on} onClick={() => setCardTab(key)} style={{ padding: '2px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '11px', fontWeight: on ? '600' : '500', background: on ? bg : 'transparent', color: on ? fg : '#8a8a85' }}>
+                                        {label} {count}
+                                    </button>
+                                );
+                            })}
                         </div>
-
-                        <div role="tablist" style={{ display: 'flex', margin: '10px 0 2px', border: '1px solid #e4e4e4', borderRadius: '7px', overflow: 'hidden' }}>
-                            {[['present', 'Present', attendance.present, '#15803d'], ['absent', 'Absent', attendance.absent, '#C8102E']].map(([key, label, count, color]) => (
-                                <button key={key} type="button" role="tab" aria-selected={cardTab === key} onClick={() => setCardTab(key)} style={{ flex: 1, padding: '6px 0', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '12px', fontWeight: cardTab === key ? '600' : '400', background: cardTab === key ? color : '#fff', color: cardTab === key ? '#fff' : '#555' }}>
-                                    {label} {count}
-                                </button>
-                            ))}
-                        </div>
+                        <div style={{ borderTop: '1px solid #f2f2f2', paddingTop: '8px', fontSize: '12px', fontWeight: '600', color: '#111' }}>{cardTab === 'present' ? 'Present today' : 'Absent today'}</div>
 
                         {(() => {
                             const mins = (s) => {
@@ -188,28 +283,58 @@ export default function AdminDashboard({
                             }
                             return rows.map((r, i) => (
                                 <div key={r.id} role="button" tabIndex={0} onClick={() => { if (isPresent) { setAttTab('present'); setSelected(r); setOpen(true); } else { setAttTab('absent'); setSelected(r); setOpen(true); } }} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.click(); }} onMouseEnter={(e) => { e.currentTarget.style.background = '#fafafa'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '30px', padding: '0 12px', borderBottom: i === rows.length - 1 ? 'none' : '1px solid #f2f2f2', fontSize: '12px', color: isPresent ? '#111' : '#C8102E' }}>
-                                    <span><span style={{ color: '#999', marginRight: '6px' }}>{i + 1}.</span>{r.volunteer}</span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ width: '22px', height: '22px', borderRadius: '50%', background: isPresent ? '#e7f5ee' : '#fdecec', color: isPresent ? '#0F6E56' : '#C8102E', fontSize: '10px', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{initialsOf(r.volunteer)}</span>{r.volunteer}</span>
                                     <span style={{ color: isPresent ? '#555' : '#C8102E' }}>{isPresent ? r.time_in : 'Absent'}</span>
                                 </div>
                             ));
                         })()}
-
+                        {(cardTab === 'present' ? todayPresent.length : absentToday.length) > 3 && (
+                            <button type="button" onClick={() => openAtt(cardTab)} style={{ background: 'none', border: 'none', padding: '6px 12px 2px', color: '#6b6b66', fontSize: '12px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>Show all {cardTab === 'present' ? todayPresent.length : absentToday.length}</button>
+                        )}
                     </div>
-
                     )}
                     {tdTab === 'activities' && (
                     /* Today's activities (Field and Branch together) */
                     <div style={card}>
-                        <div style={cardHead}>
-                            <span style={cardTitle}>Today&apos;s Activities</span>
-                            <span style={cardMeta}>{todays.length > 3 ? `3 of ${todays.length}` : `${todays.length} today`}</span>
-                        </div>
                         {shownToday.length === 0 ? (
                             <p style={{ padding: '22px 18px', fontSize: '12.5px', color: '#bbb', textAlign: 'center', margin: 0 }}>
                                 No activities today.
                             </p>
                         ) : (
-                            shownToday.map((a, i) => <ActivityRow key={a.id} a={a} last={i === shownToday.length - 1} onOpen={setActOpen} />)
+                            shownToday.map((a, i) => {
+                                const isOpen = !!actOpen && !!actOpen._dd && actOpen.id === a.id;
+                                const vols = a.volunteers || [];
+                                return (
+                                    <ActivityRow key={a.id} a={a} last={i === shownToday.length - 1} onOpen={(x) => setActOpen(x ? { ...x, _dd: true } : null)} open={isOpen} compact extra={isOpen ? (
+                                        <div style={{ padding: '2px 18px 14px' }}>
+                                            <div style={{ position: 'relative', padding: '6px 0 0 22px' }}>
+                                                <div style={{ position: 'absolute', left: '3px', top: '16px', bottom: '16px', width: '1px', background: '#ddd' }} />
+                                                {[['Where', a.location_name || '-'], ['Assignment', a.name], ['Assigned by', a.assigned_by || '-']].map(([k, v]) => (
+                                                    <div key={k} style={{ position: 'relative', padding: '0 0 12px' }}>
+                                                        <span style={{ position: 'absolute', left: '-22px', top: '4px', width: '8px', height: '8px', borderRadius: '50%', background: '#bbb' }} />
+                                                        <div style={{ fontSize: '11.5px', color: '#999' }}>{k}</div>
+                                                        <div style={{ fontSize: '12.5px', fontWeight: '500', color: '#111', marginTop: '1px', wordBreak: 'break-word' }}>{v}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div style={{ fontSize: '12px', fontWeight: '600', color: '#A32D2D', margin: '10px 0 4px' }}>Assigned volunteers ({vols.length})</div>
+                                            {vols.length === 0 ? (
+                                                <p style={{ fontSize: '12.5px', color: '#bbb', margin: '6px 0 0' }}>No volunteers assigned yet.</p>
+                                            ) : vols.map((v, vi) => {
+                                                const b = ARRIVAL_EXT[v.arrival] || ARRIVAL_EXT.not_in;
+                                                return (
+                                                    <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0' }}>
+                                                        <span style={{ fontSize: '12px', color: '#999', minWidth: '16px' }}>{vi + 1}.</span>
+                                                        <span style={{ flex: 1, minWidth: 0, fontSize: '12.5px', fontWeight: '500', color: '#111', wordBreak: 'break-word' }}>{v.name}</span>
+                                                        {v.time_in && <span style={{ fontSize: '11px', color: '#999', whiteSpace: 'nowrap' }}>in {v.time_in}</span>}
+                                                        <span style={{ ...b.style, fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '20px', whiteSpace: 'nowrap' }}>{b.label}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : null} />
+                                );
+                            })
                         )}
                         <div style={cardFoot}>
                             <Link href={route('admin.activities.index')} style={linkRed}>View all</Link>
@@ -217,7 +342,41 @@ export default function AdminDashboard({
                     </div>
 
                     )}
-                    {/* Upcoming this week */}
+                </div>
+
+                {/* Quick create + Reminders */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
+                <div className="ad-next-spacer" aria-hidden="true" />
+                <CreateActivityCard />
+                <div style={{ ...card, borderLeft: '4px solid #A32D2D' }}>
+                    <div style={cardHead}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#A32D2D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4" /><path d="M9 15l-4.5 4.5" /><path d="M14.5 4l5.5 5.5" /></svg><span style={{ ...cardTitle, color: '#A32D2D' }}>Reminders</span></span>
+                        {reminders.length > 0 && <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: '600' }}>{reminders.length} need{reminders.length === 1 ? 's' : ''} your attention</span>}
+                    </div>
+                    {reminders.length === 0 ? (
+                        <p style={{ padding: '20px 18px', fontSize: '12.5px', color: '#15803d', margin: 0 }}>
+                            &#10003; You&apos;re all caught up. No pending reminders.
+                        </p>
+                    ) : (
+                        reminders.map((r, i) => (
+                            <Link
+                                key={i}
+                                href={r.href}
+                                className="rem-row"
+                                style={{ padding: '12px 18px', borderBottom: i === reminders.length - 1 ? 'none' : '1px solid #f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', textDecoration: 'none' }}
+                            >
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#333' }}>
+                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: r.level === 'high' ? '#CC0000' : '#BA7517', flexShrink: 0 }} />
+                                    {r.text}
+                                </span>
+                                <span aria-hidden="true" style={{ color: '#bbb', fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>&rsaquo;</span>
+                            </Link>
+                        ))
+                    )}
+                </div>
+                </div>
+            </div>
+            {/* Upcoming this week */}
                     <div style={card}>
                         <div style={cardHead}>
                             <span style={cardTitle}>Upcoming this week</span>
@@ -272,45 +431,11 @@ export default function AdminDashboard({
                             <Link href={route('admin.activities.index', { status: 'upcoming' })} style={linkRed}>View all</Link>
                         </div>
                     </div>
-                </div>
-
-                {/* Quick create + Reminders */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
-                <div className="ad-next-spacer" aria-hidden="true" />
-                <CreateActivityCard />
-                <div style={card}>
-                    <div style={cardHead}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#A32D2D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4" /><path d="M9 15l-4.5 4.5" /><path d="M14.5 4l5.5 5.5" /></svg><span style={{ ...cardTitle, color: '#A32D2D' }}>Reminders</span></span>
-                        {reminders.length > 0 && <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: '600' }}>{reminders.length} need{reminders.length === 1 ? 's' : ''} your attention</span>}
-                    </div>
-                    {reminders.length === 0 ? (
-                        <p style={{ padding: '20px 18px', fontSize: '12.5px', color: '#15803d', margin: 0 }}>
-                            &#10003; You&apos;re all caught up. No pending reminders.
-                        </p>
-                    ) : (
-                        reminders.map((r, i) => (
-                            <Link
-                                key={i}
-                                href={r.href}
-                                className="rem-row"
-                                style={{ padding: '12px 18px', borderBottom: i === reminders.length - 1 ? 'none' : '1px solid #f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', textDecoration: 'none' }}
-                            >
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#333' }}>
-                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: r.level === 'high' ? '#CC0000' : '#BA7517', flexShrink: 0 }} />
-                                    {r.text}
-                                </span>
-                                <span aria-hidden="true" style={{ color: '#bbb', fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>&rsaquo;</span>
-                            </Link>
-                        ))
-                    )}
-                </div>
-                </div>
-            </div>
             <div style={{ paddingBottom: '80px' }} />
 
 
             {/* Activity details + assigned volunteers */}
-            {actOpen && (
+            {actOpen && !actOpen._dd && (
                 <div
                     onClick={() => setActOpen(null)}
                     style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}

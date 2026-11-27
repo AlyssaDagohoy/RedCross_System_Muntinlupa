@@ -11,6 +11,7 @@ use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
 class VolunteerController extends Controller
@@ -21,7 +22,7 @@ class VolunteerController extends Controller
         $requiredTypes = ['nbi', 'medical', 'training', 'barangay'];
 
         $volunteers = User::role('volunteer')
-            ->select('id', 'badge_number', 'name', 'email', 'status', 'created_at')
+            ->select(array_values(array_intersect(Schema::getColumnListing('users'), ['id', 'badge_number', 'name', 'email', 'status', 'created_at', 'biometric_id', 'phone', 'address', 'birthdate', 'gender', 'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone'])))
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -58,6 +59,8 @@ class VolunteerController extends Controller
             ])->values();
             $v->documents_submitted = (int) ($docCounts[$v->id] ?? 0);
             $v->documents_required  = count($requiredTypes);
+            $bd = $v->getAttributes()['birthdate'] ?? null;
+            $v->birth_label = $bd ? \Carbon\Carbon::parse($bd)->format('F j, Y') : null;
             $v->total_hours         = round((float) ($hours[$v->id] ?? 0), 1);
         });
 

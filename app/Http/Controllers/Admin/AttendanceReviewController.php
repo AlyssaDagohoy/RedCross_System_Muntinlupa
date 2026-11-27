@@ -8,6 +8,35 @@ use Illuminate\Http\Request;
 
 class AttendanceReviewController extends Controller
 {
+    public function fallbackPhoto(Attendance $attendance)
+    {
+        $path = $attendance->fallback_photo_path;
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+
+        if (!$path || !str_starts_with($path, 'fallback/') || !$disk->exists($path)) {
+            abort(404);
+        }
+
+        return $disk->response($path);
+    }
+
+    public function deleteFallbackPhoto(Attendance $attendance)
+    {
+        $path = $attendance->fallback_photo_path;
+
+        if ($attendance->status === 'needs_review') {
+            return back()->withErrors(['review' => 'Review this record first before deleting the selfie.']);
+        }
+
+        if ($path && str_starts_with($path, 'fallback/')) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($path);
+        }
+
+        $attendance->update(['fallback_photo_path' => null]);
+
+        return back()->with('message', 'Selfie deleted.');
+    }
+
     public function review(Request $request, Attendance $attendance)
     {
         $data = $request->validate([

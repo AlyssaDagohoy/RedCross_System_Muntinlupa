@@ -20,6 +20,16 @@ class RedirectIfAuthenticated
 
                 // Redirect based on role
                 if ($user->hasRole('admin')) {
+                    // Admin is stuck on the "Who's using this?" picker (no profile chosen yet):
+                    // going back to /login ends the session and shows the login form.
+                    if (! session('admin_profile')) {
+                        Auth::guard($guard)->logout();
+                        $request->session()->invalidate();
+                        $request->session()->regenerateToken();
+
+                        return redirect()->route('login');
+                    }
+
                     return redirect()->route('admin.dashboard');
                 }
 

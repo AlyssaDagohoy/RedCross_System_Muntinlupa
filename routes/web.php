@@ -22,6 +22,11 @@ use Inertia\Inertia;
 
 Route::redirect('/', '/login');
 
+Route::middleware('auth')->group(function () {
+    Route::get('account/set-password', [\App\Http\Controllers\Auth\ForcePasswordController::class, 'show'])->name('password.force.show');
+    Route::post('account/set-password', [\App\Http\Controllers\Auth\ForcePasswordController::class, 'update'])->name('password.force.update');
+});
+
 Route::get('/donate', function () {
     return Inertia::render('Donate');
 })->name('donate');
@@ -255,6 +260,40 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
                 'volunteers_count' => $a->volunteers_count,
             ])
             ->values();
+        // ---- Dashboard stat cards ----
+        $dsVol = fn () => \App\Models\User::role('volunteer')
+            ->where('status', 'approved');
+        $dsMonthStart = now()->startOfMonth();
+        $dsMonthEnd   = now()->endOfMonth();
+        $dsLastStart  = now()->subMonthNoOverflow()->startOfMonth();
+        $dsLastEnd    = now()->subMonthNoOverflow()->endOfMonth();
+
+        $dsActive   = $dsVol()->count();
+        $dsNew      = $dsVol()->where('created_at', '>=', $dsMonthStart)->count();
+        $dsRecent   = \App\Models\Attendance::whereDate('date', '>=', now()->subDays(30)->toDateString())->whereNotNull('time_in')->select('user_id');
+        $dsInactive = $dsVol()->whereNotIn('id', $dsRecent)->count();
+
+        $dsActs = fn ($from, $to) => \App\Models\Activity::where('status', '!=', 'cancelled')->whereBetween('date', [$from->toDateString(), $to->toDateString()]);
+        $dsActThis = $dsActs($dsMonthStart, $dsMonthEnd)->count();
+        $dsActDone = $dsActs($dsMonthStart, $dsMonthEnd)->where('status', 'completed')->count();
+        $dsActLast = $dsActs($dsLastStart, $dsLastEnd)->count();
+
+        $dsRate = function ($from, $to) {
+            $base = \App\Models\Attendance::whereBetween('date', [$from->toDateString(), $to->toDateString()]);
+            $att = (clone $base)->where('status', 'present')->count();
+            $mis = (clone $base)->where('status', 'absent')->count();
+            return [$att, $mis, ($att + $mis) > 0 ? (int) round($att / ($att + $mis) * 100) : 0];
+        };
+        [$dsAttNow, $dsMisNow, $dsPctNow] = $dsRate($dsMonthStart, now());
+        [, , $dsPctPrev] = $dsRate($dsLastStart, $dsLastEnd);
+
+        $adminStats = [
+            'active'        => ['count' => $dsActive, 'new_this_month' => $dsNew],
+            'activities'    => ['this_month' => $dsActThis, 'done' => $dsActDone, 'left' => max(0, $dsActThis - $dsActDone), 'diff' => $dsActThis - $dsActLast],
+            'participation' => ['pct' => $dsPctNow, 'attended' => $dsAttNow, 'missed' => $dsMisNow, 'diff' => $dsPctNow - $dsPctPrev],
+            'inactive'      => ['count' => $dsInactive],
+        ];
+        // ---- end stat cards ----
         // ---- end Dashboard v2 data ----
 
         return Inertia::render('Admin/Dashboard', [
@@ -270,6 +309,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
             'reminders'       => $reminders,
             'todayActivities' => $todayActivities->values(),
             'upcoming'        => $upcomingWeek,
+            'stats'           => $adminStats,
         ]);
     })->name('dashboard');
 
@@ -291,8 +331,12 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::get('/attendance', [AdminAttendanceController::class, 'index'])->name('attendance.index');
     Route::post('/attendance/{attendance}/review', [\App\Http\Controllers\Admin\AttendanceReviewController::class, 'review'])->name('attendance.review');
     Route::post('/attendance/{attendance}/correct', [\App\Http\Controllers\Admin\AttendanceReviewController::class, 'correct'])->name('attendance.correct');
+    Route::get('/attendance/{attendance}/fallback-photo', [\App\Http\Controllers\Admin\AttendanceReviewController::class, 'fallbackPhoto'])->name('attendance.fallback-photo');
+    Route::delete('/attendance/{attendance}/fallback-photo', [\App\Http\Controllers\Admin\AttendanceReviewController::class, 'deleteFallbackPhoto'])->name('attendance.fallback-photo.delete');
     Route::get('/attendance/export-pdf', [AdminAttendanceController::class, 'exportPdf'])->name('attendance.export.pdf');
     Route::get('/attendance/export-excel', [AdminAttendanceController::class, 'exportExcel'])->name('attendance.export.excel');
+    Route::get('/dtr/{dtr}/proof', [\App\Http\Controllers\Admin\DtrReviewController::class, 'proof'])->name('dtr.proof');
+    Route::post('/dtr/{dtr}/review', [\App\Http\Controllers\Admin\DtrReviewController::class, 'review'])->name('dtr.review');
 
     // Communication
     Route::get('/communication', [AdminCommunicationController::class, 'index'])->name('communication');
@@ -347,7 +391,7 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
         \App\Models\Attendance::markAbsences($user->id);
 
         $recentAttendance = \App\Models\Attendance::where('user_id', $user->id)
-            ->with('activity:id,name,date,location_name,start_time,end_time')
+            ->with('activity:id,name,date,location_name,start_time,end_time,description,assigned_by')
             ->orderBy('date', 'desc')
             ->orderBy('updated_at', 'desc')
             ->limit(5)
@@ -362,11 +406,69 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
             ->whereDate('date', '>=', today())
             ->get(['activities.id', 'activities.name', 'activities.location_name', 'activities.date', 'activities.latitude', 'activities.longitude', 'activities.radius_meters', 'activities.start_time', 'activities.end_time', 'activities.description', 'activities.assigned_by']);
 
+        $doneStatuses = ['needs_review', 'absent', 'cancelled'];
+        $attendedCount = \App\Models\Attendance::where('user_id', $user->id)->whereNotNull('time_out')->whereNotIn('status', $doneStatuses)->count();
+        $missedCount   = \App\Models\Attendance::where('user_id', $user->id)->whereIn('status', ['absent', 'cancelled'])->count();
+        $monthHours    = \App\Models\Attendance::where('user_id', $user->id)->whereMonth('date', now()->month)->whereYear('date', now()->year)->sum('hours_rendered');
+        $monthAttended = \App\Models\Attendance::where('user_id', $user->id)->whereMonth('date', now()->month)->whereYear('date', now()->year)->whereNotNull('time_out')->whereNotIn('status', $doneStatuses)->distinct()->count('date');
+        $streakRows = \App\Models\Attendance::where('user_id', $user->id)
+            ->orderBy('date')
+            ->orderBy('time_in')
+            ->get(['status', 'time_out']);
+        $longestStreak = 0;
+        $currentStreak = 0;
+        foreach ($streakRows as $row) {
+            if (in_array($row->status, ['absent', 'rejected'], true)) { $currentStreak = 0; continue; }
+            if (in_array($row->status, ['needs_review', 'cancelled'], true) || !$row->time_out) { continue; }
+            $currentStreak++;
+            $longestStreak = max($longestStreak, $currentStreak);
+        }
+        $monthDone = \App\Models\Attendance::where('user_id', $user->id)
+            ->whereMonth('date', now()->month)
+            ->whereYear('date', now()->year)
+            ->whereNotNull('time_out')
+            ->whereNotIn('status', ['needs_review', 'absent', 'cancelled', 'rejected'])
+            ->count();
+        $monthScheduled = $user->activities()
+            ->whereMonth('activities.date', now()->month)
+            ->whereYear('activities.date', now()->year)
+            ->where('activities.status', '!=', 'cancelled')
+            ->count();
+        $recordsTotal = \App\Models\Attendance::where('user_id', $user->id)
+            ->where(function ($q) {
+                $q->whereNotNull('time_out')
+                  ->orWhereIn('status', ['absent', 'cancelled', 'needs_review', 'rejected']);
+            })
+            ->count();
+        $lm = now()->subMonthNoOverflow();
+        $lastMonthHours    = \App\Models\Attendance::where('user_id', $user->id)->whereMonth('date', $lm->month)->whereYear('date', $lm->year)->sum('hours_rendered');
+        $lastMonthDone     = \App\Models\Attendance::where('user_id', $user->id)->whereMonth('date', $lm->month)->whereYear('date', $lm->year)->whereNotNull('time_out')->whereNotIn('status', ['needs_review', 'absent', 'cancelled', 'rejected'])->count();
+        $lastMonthAttended = \App\Models\Attendance::where('user_id', $user->id)->whereMonth('date', $lm->month)->whereYear('date', $lm->year)->whereNotNull('time_out')->whereNotIn('status', $doneStatuses)->count();
+        $lastMonthMissed   = \App\Models\Attendance::where('user_id', $user->id)->whereMonth('date', $lm->month)->whereYear('date', $lm->year)->whereIn('status', ['absent', 'cancelled'])->count();
+                $todayHoursDash = \App\Models\Attendance::where('user_id', $user->id)->whereDate('date', today())->sum('hours_rendered');
+        $branchAttended = \App\Models\Attendance::where('user_id', $user->id)->whereNotNull('time_out')->whereNotIn('status', $doneStatuses)->whereHas('activity', function ($q) { $q->where('type', 'branch'); })->count();
+        $fieldAttended = max(0, $attendedCount - $branchAttended);
         return Inertia::render('Volunteer/Dashboard', [
             'auth'               => ['user' => $user],
             'totalHours'         => $totalHours,
             'totalDays'          => $totalDays,
             'monthDays'          => $monthDays,
+            'attendedCount'      => $attendedCount,
+            'missedCount'        => $missedCount,
+            'monthHours'         => $monthHours,
+            'todayHours'         => $todayHoursDash,
+            'monthAttended'      => $monthAttended,
+            'longestStreak'      => $longestStreak,
+            'currentStreak'      => $currentStreak,
+            'monthDone'          => $monthDone,
+            'monthScheduled'     => $monthScheduled,
+            'fieldAttended'      => $fieldAttended,
+            'branchAttended'     => $branchAttended,
+            'lastMonthHours'     => $lastMonthHours,
+            'lastMonthDone'      => $lastMonthDone,
+            'lastMonthAttended'  => $lastMonthAttended,
+            'lastMonthMissed'    => $lastMonthMissed,
+            'recordsTotal'       => $recordsTotal,
             'assignedActivities' => $assignedActivities,
             'recentAttendance'   => $recentAttendance,
             'todayAttendance'    => $todayAttendance,
@@ -471,6 +573,9 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
     Route::post('/attendance/{attendance}/request-review', [\App\Http\Controllers\Volunteer\AttendanceReviewController::class, 'store'])->name('attendance.request-review');
     Route::post('/attendance/time-in', [AttendanceController::class, 'timeIn'])->name('attendance.timein');
     Route::post('/attendance/time-out', [AttendanceController::class, 'timeOut'])->name('attendance.timeout');
+    Route::get('/dtr', [\App\Http\Controllers\Volunteer\DtrController::class, 'index'])->name('dtr');
+    Route::post('/dtr', [\App\Http\Controllers\Volunteer\DtrController::class, 'store'])->name('dtr.store');
+    Route::get('/dtr/{dtr}/proof', [\App\Http\Controllers\Volunteer\DtrController::class, 'proof'])->name('dtr.proof');
 
     // Records
     Route::get('/records', [RecordsController::class, 'index'])->name('records');
@@ -508,7 +613,11 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
     // Face Recognition Attendance
     Route::post('/face/register', [FaceAttendanceController::class, 'registerFace'])->name('face.register');
     Route::post('/face/timein', [FaceAttendanceController::class, 'timeIn'])->name('face.timein');
+    Route::get('/face/challenge', [FaceAttendanceController::class, 'challenge'])->name('face.challenge');
+    Route::post('/face/precheck', [FaceAttendanceController::class, 'precheck'])->middleware('throttle:30,1')->name('face.precheck');
     Route::post('/face/timeout', [FaceAttendanceController::class, 'timeOut'])->name('face.timeout');
+Route::post('/face/fallback-code', [FaceAttendanceController::class, 'fallbackCode'])->name('face.fallback.code');
+Route::post('/face/scan-problem', [FaceAttendanceController::class, 'scanProblem'])->name('face.scan.problem');
 
     // WebAuthn Fingerprint
     Route::post('/webauthn/register/options', [WebAuthnRegisterController::class, 'options'])->name('webauthn.register.options');
@@ -533,6 +642,13 @@ require __DIR__.'/auth.php';
 \Illuminate\Support\Facades\Route::post('admin/who/add', [\App\Http\Controllers\Admin\ProfilePinController::class, 'addAdmin'])->name('admin.who.add');
 \Illuminate\Support\Facades\Route::post('admin/who/change', [\App\Http\Controllers\Admin\ProfilePinController::class, 'changePin'])->name('admin.who.change');
 
+    \Illuminate\Support\Facades\Route::post('admin/accounts', [\App\Http\Controllers\Admin\AdminAccountController::class, 'store'])->name('admin.accounts.store');
+    \Illuminate\Support\Facades\Route::get('admin/accounts', [\App\Http\Controllers\Admin\AdminAccountController::class, 'index'])->name('admin.accounts.index');
+    \Illuminate\Support\Facades\Route::delete('admin/accounts/{user}', [\App\Http\Controllers\Admin\AdminAccountController::class, 'destroy'])->name('admin.accounts.destroy');
+\Illuminate\Support\Facades\Route::put('admin/accounts/{user}', [\App\Http\Controllers\Admin\AdminAccountController::class, 'update'])->name('admin.accounts.update');
+\Illuminate\Support\Facades\Route::post('admin/accounts/{user}/deactivate', [\App\Http\Controllers\Admin\AdminAccountController::class, 'deactivate'])->name('admin.accounts.deactivate');
+\Illuminate\Support\Facades\Route::post('admin/accounts/{user}/reactivate', [\App\Http\Controllers\Admin\AdminAccountController::class, 'reactivate'])->name('admin.accounts.reactivate');
+\Illuminate\Support\Facades\Route::post('admin/accounts/{user}/reset-password', [\App\Http\Controllers\Admin\AdminAccountController::class, 'resetPassword'])->name('admin.accounts.reset');
     \Illuminate\Support\Facades\Route::post('admin/who/clear', function () {
         session()->forget('admin_profile');
         return back();

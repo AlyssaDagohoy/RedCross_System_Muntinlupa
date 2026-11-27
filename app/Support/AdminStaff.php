@@ -25,6 +25,28 @@ class AdminStaff
         return array_values(array_unique(array_merge($base, $extra)));
     }
 
+    public static function activity(\Illuminate\Http\Request $request): array
+    {
+        if (! Schema::hasTable('admin_profile_activity')) {
+            return [];
+        }
+
+        $user = $request->user();
+        $name = ($user && $user->hasAnyRole(['admin', 'Admin'])) ? session('admin_profile') : null;
+
+        if ($name) {
+            $row = DB::table('admin_profile_activity')->where('name', $name)->first();
+            $stale = ! $row || \Illuminate\Support\Carbon::parse($row->last_active_at)->lt(now()->subMinute());
+            if ($stale) {
+                DB::table('admin_profile_activity')->updateOrInsert(['name' => $name], ['last_active_at' => now()]);
+            }
+        }
+
+        return DB::table('admin_profile_activity')->pluck('last_active_at', 'name')
+            ->map(fn ($t) => \Illuminate\Support\Carbon::parse($t)->toIso8601String())
+            ->all();
+    }
+
     public static function tidy(string $name): string
     {
         $n = preg_replace('/\s+/u', ' ', trim($name));
@@ -69,6 +91,9 @@ class AdminStaff
 
         DB::table('admin_profile_pins')->where('name', $old)->update(['name' => $new, 'updated_at' => now()]);
         DB::table('admin_profile_details')->where('name', $old)->update(['name' => $new]);
+        if (Schema::hasTable('admin_profile_activity')) {
+            DB::table('admin_profile_activity')->where('name', $old)->update(['name' => $new]);
+        }
         DB::table('activities')->where('assigned_by', $old)->update(['assigned_by' => $new]);
     }
 }

@@ -3,8 +3,8 @@
 return [
     // All values are in minutes.
 
-    // Time In opens this long before the activity starts. Earlier than this is blocked.
-    'time_in_opens_before' => 60,
+    // Time In opens this long before the activity starts (120 = 2 hours, so 6 AM for an 8 AM activity).
+    'time_in_opens_before' => 120,
 
     // Time In is "on time" from the start until this many minutes after it.
     'time_in_on_time_window' => 15,

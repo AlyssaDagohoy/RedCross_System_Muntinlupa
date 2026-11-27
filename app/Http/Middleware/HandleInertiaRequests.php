@@ -34,8 +34,12 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user()?->load('roles'),
             ],
-            'adminProfile' => fn () => ($request->user() && $request->user()->hasAnyRole(['admin', 'Admin'])) ? session('admin_profile') : null,
+            'profileSetupRequired' => fn () => (bool) ($request->user()?->must_complete_profile ?? false),
+            'isSuperAdmin' => fn () => (bool) ($request->user() && $request->user()->hasRole('super-admin')),
+            'isAdminUser' => fn () => (bool) ($request->user() && $request->user()->hasAnyRole(['admin', 'Admin'])),
+            'adminProfile' => fn () => ($request->user() && $request->user()->hasAnyRole(['admin', 'Admin'])) ? $request->user()->name : null,
             'staffList' => fn () => \App\Support\AdminStaff::all(),
+            'staffActive' => fn () => \App\Support\AdminStaff::activity($request),
             'profilePinned' => fn () => \Illuminate\Support\Facades\Schema::hasTable('admin_profile_pins') ? \Illuminate\Support\Facades\DB::table('admin_profile_pins')->pluck('name')->all() : [],
             'staffPhotos' => fn () => \Illuminate\Support\Facades\Schema::hasTable('admin_profile_details') ? \Illuminate\Support\Facades\DB::table('admin_profile_details')->whereNotNull('photo')->pluck('photo', 'name')->all() : [],
             'flash' => [

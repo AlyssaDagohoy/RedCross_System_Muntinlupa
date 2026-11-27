@@ -21,7 +21,9 @@ const clearFlag = () => { try { sessionStorage.removeItem(KEY); } catch (err) {}
 const markGuest = () => { try { sessionStorage.setItem(KEY, '1'); } catch (err) {} };
 const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-const initialAuth = () => {
+const needsPick = (props) => !!props && Array.isArray(props.staffList) && props.staffList.length > 0 && !props.adminProfile;
+
+const initialPage = () => {
     try {
         const el = document.getElementById('app');
         let raw = el && el.dataset ? el.dataset.page : null;
@@ -32,15 +34,26 @@ const initialAuth = () => {
         if (!raw) return null;
         const page = JSON.parse(raw);
         if (!page || !page.props) return null;
-        const a = page.props.auth;
-        if (a && typeof a === 'object') return !!a.user;
-        return null;
+        return page;
     } catch (err) { return null; }
+};
+
+const initialAuth = () => {
+    const page = initialPage();
+    if (!page) return null;
+    const a = page.props.auth;
+    if (a && typeof a === 'object') return !!a.user;
+    return null;
 };
 
 const finishAll = () => {
     set({ phase: 'off', shown: false, bar: false, instant: false, confirmed: false });
     lastEnd = Date.now();
+};
+
+const drop = () => {
+    clearTimeout(guard);
+    set({ phase: 'off', shown: false, bar: false, instant: false, confirmed: false });
 };
 
 const cancel = () => {
@@ -54,7 +67,6 @@ const startPending = () => {
     if (S.phase !== 'off' || reduced()) return;
     S.t0 = Date.now();
     set({ phase: 'in', shown: false, bar: false, instant: false, confirmed: false });
-    requestAnimationFrame(() => requestAnimationFrame(() => { if (S.phase === 'in') set({ shown: true }); }));
     guard = setTimeout(cancel, 8000);
 };
 
@@ -75,12 +87,23 @@ const confirm = () => {
     setTimeout(finishAll, wait + FILL_MS + HOLD_MS + OUT_MS + 60);
 };
 
+export const showPreparing = () => {
+    if (!readFlag() || S.phase !== 'off') return;
+    clearFlag();
+    confirm();
+};
+
+if (typeof window !== 'undefined') window.__rcPreparing = showPreparing;
+
 const init = () => {
     if (booted) return;
     booted = true;
     authed = initialAuth();
     if (authed === false) markGuest();
-    else if (authed === true && readFlag()) { clearFlag(); confirm(); }
+    else if (authed === true && readFlag()) {
+        const page = initialPage();
+        if (!needsPick(page && page.props)) { clearFlag(); confirm(); }
+    }
     try {
         router.on('start', (e) => {
             try {
@@ -99,7 +122,9 @@ const init = () => {
                 markGuest();
                 if (S.phase === 'in') cancel();
             } else if (authed === true) {
-                if (readFlag() || S.phase === 'in') { clearFlag(); confirm(); }
+                if (needsPick(p.props)) {
+                    if (S.phase === 'in') drop();
+                } else if (readFlag() || S.phase === 'in') { clearFlag(); confirm(); }
             } else if (S.phase === 'in') {
                 clearFlag();
                 confirm();

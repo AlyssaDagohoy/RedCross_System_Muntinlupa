@@ -44,6 +44,15 @@ class ProfileController extends Controller
         $old = (string) session('admin_profile');
         abort_if($old === '', 403);
 
+        if ($request->user()->must_complete_profile) {
+            $hasPhoto = (bool) DB::table('admin_profile_details')->where('name', $old)->value('photo');
+            $request->validate([
+                'title' => 'required|string|max:100',
+                'phone' => 'required|string|max:20',
+                'photo' => $hasPhoto ? 'nullable|image|max:2048' : 'required|image|max:2048',
+            ]);
+        }
+
         $request->merge(['name' => AdminStaff::tidy((string) $request->input('name'))]);
 
         $validated = $request->validate([
@@ -94,6 +103,13 @@ class ProfileController extends Controller
 
         if ($new !== $old) {
             session(['admin_profile' => $new]);
+            $request->user()->forceFill(['name' => $new])->save();
+        }
+
+        if ($request->user()->must_complete_profile) {
+            $request->user()->forceFill(['must_complete_profile' => false])->save();
+
+            return redirect()->route('admin.dashboard')->with('success', 'Profile completed. Welcome!');
         }
 
         return back()->with('success', 'Profile updated successfully!');

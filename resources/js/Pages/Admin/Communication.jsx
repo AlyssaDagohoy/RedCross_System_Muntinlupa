@@ -1,4 +1,4 @@
-import { router, useForm } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 import AdminShell from '../../Components/AdminShell';
 
@@ -116,6 +116,7 @@ export default function AdminCommunication({ messages = [], announcements = [] }
     };
 
     // Sends one request per box (inbox / sent), one after the other.
+    const isSuperAdmin = !!usePage().props.isSuperAdmin;
     const runBatch = (routeName, list) => {
         if (list.length === 0) return;
         const boxes = [...new Set(list.map((r) => r.box))];
@@ -179,7 +180,7 @@ export default function AdminCommunication({ messages = [], announcements = [] }
         view === 'trash' ? (
             <>
                 <IconBtn label="Restore" onClick={() => runBatch('admin.communication.restore', list)}><RestoreIcon /></IconBtn>
-                <IconBtn label="Delete forever" onClick={() => purgeRows(list)}><TrashIcon /></IconBtn>
+                {isSuperAdmin && <IconBtn label="Delete forever" onClick={() => purgeRows(list)}><TrashIcon /></IconBtn>}
             </>
         ) : view === 'archive' ? (
             <>

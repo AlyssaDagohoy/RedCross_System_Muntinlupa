@@ -110,6 +110,17 @@ function DetailRow({ icon, label, children }) {
     );
 }
 
+function TlItem({ label, last, children }) {
+    return (
+        <div style={{ position: 'relative', padding: last ? '0 0 0 20px' : '0 0 14px 20px' }}>
+            <span style={{ position: 'absolute', left: 0, top: '4px', width: '8px', height: '8px', borderRadius: '50%', background: '#c4c4c4' }} />
+            {!last && <span style={{ position: 'absolute', left: '3.5px', top: '16px', bottom: '-2px', width: '1px', background: '#e2e2e2' }} />}
+            <div style={{ fontSize: '11px', color: '#999' }}>{label}</div>
+            {children}
+        </div>
+    );
+}
+
 export default function Index({ activities }) {
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState(() => { try { const s = new URLSearchParams(window.location.search).get('status'); return ['upcoming', 'ongoing', 'completed', 'cancelled'].includes(s) ? s : 'all'; } catch { return 'all'; } });
@@ -254,7 +265,7 @@ export default function Index({ activities }) {
     return (
         <AdminShell active="activities" title="Activities">
             <style>{`
-                .act-card:hover { border-color: #d8d8d8 !important; }
+                .act-card:hover { background: #fcfcfc !important; }
                 @keyframes act-today-flash { 0% { background: #ffffff; } 13%, 47% { background: #F5BDBD; } 100% { background: #ffffff; } }
                 .act-today { animation: act-today-flash 1.2s ease-out 1; }
                 .act-edit-btn:hover { background: #eeeeee !important; }
@@ -269,59 +280,58 @@ export default function Index({ activities }) {
                 }
             `}</style>
 
-            <Link
-                href={route('admin.activities.create')}
-                className="act-new-btn"
-                style={{
-                    position: 'fixed', right: '24px', bottom: '24px', zIndex: 50,
-                    background: '#CC0000', color: 'white', padding: '12px 20px', borderRadius: '999px',
-                    textDecoration: 'none', fontWeight: '600', fontSize: '12.5px', whiteSpace: 'nowrap',
-                    boxShadow: '0 6px 18px rgba(204, 0, 0, 0.35)',
-                }}
-            >
-                + New Activity
-            </Link>
-
             {activities.length > 0 && (
-                <div style={{ marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-                                style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-                                <circle cx="11" cy="11" r="7" />
-                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                            </svg>
-                            <input
-                                type="text"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search activity, location, assignment, volunteer..."
-                                style={{ ...fieldInput, padding: '9px 12px 9px 34px', outline: 'none' }}
-                            />
-                        </div>
-
+                <div style={{ marginBottom: '0', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                    <Link
+                        href={route('admin.activities.create')}
+                        className="act-new-top"
+                        style={{
+                            position: 'absolute', top: 0, right: 0, boxSizing: 'border-box',
+                            display: 'inline-flex', alignItems: 'center', gap: '6px', height: '38px', padding: '0 14px',
+                            background: 'white', border: '1px solid #e3e3e3', borderRadius: '8px',
+                            color: '#555', textDecoration: 'none', fontSize: '12px', fontWeight: '500',
+                            fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap',
+                        }}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BE2A2E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        New activity
+                    </Link>
+                    <ActivitySummaryCards activities={activities} />
+                    <div style={{ order: -2, marginBottom: '12px', display: 'flex', alignItems: 'center', width: '100%', maxWidth: 'min(400px, calc(100% - 150px))', height: '38px', boxSizing: 'border-box', padding: '0 4px 0 12px', background: 'white', border: '1px solid #ebebeb', borderRadius: '10px' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                            <circle cx="11" cy="11" r="7" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search activity, location..."
+                            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: '13px', fontFamily: 'inherit', color: '#333', padding: '0 10px' }}
+                        />
+                        <span style={{ width: '1px', height: '20px', background: '#e5e5e5', margin: '0 4px', flexShrink: 0 }} />
                         <div ref={panelRef} style={{ position: 'relative', flexShrink: 0 }}>
                             <button
                                 type="button"
+                                aria-label="Filters"
                                 onClick={() => setPanelOpen((v) => !v)}
                                 style={{
-                                    display: 'flex', alignItems: 'center', gap: '7px',
-                                    padding: '9px 14px', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit',
-                                    border: '1px solid ' + (filtersOn ? '#CC0000' : '#ebebeb'),
-                                    borderRadius: '9px', cursor: 'pointer',
-                                    background: filtersOn ? '#CC0000' : 'white',
-                                    color: filtersOn ? 'white' : '#333',
+                                    position: 'relative', width: '32px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    border: 'none', borderRadius: '8px', cursor: 'pointer',
+                                    background: filtersOn ? '#fdeaea' : 'transparent',
+                                    color: filtersOn ? '#CC0000' : '#555',
                                 }}
                             >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <line x1="4" y1="6" x2="9" y2="6" /><circle cx="11" cy="6" r="2" /><line x1="13" y1="6" x2="20" y2="6" />
+                                    <line x1="4" y1="12" x2="13" y2="12" /><circle cx="15" cy="12" r="2" /><line x1="17" y1="12" x2="20" y2="12" />
+                                    <line x1="4" y1="18" x2="7" y2="18" /><circle cx="9" cy="18" r="2" /><line x1="11" y1="18" x2="20" y2="18" />
                                 </svg>
-                                Filters
                                 {panelCount > 0 && (
                                     <span style={{
-                                        minWidth: '16px', height: '16px', borderRadius: '8px', padding: '0 4px',
-                                        background: 'white', color: '#CC0000', fontSize: '10px', fontWeight: '700',
-                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box',
+                                        position: 'absolute', top: '-3px', right: '-3px', minWidth: '15px', height: '15px', borderRadius: '8px', padding: '0 3px',
+                                        background: '#CC0000', color: 'white', fontSize: '9.5px', fontWeight: '700',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box',
                                     }}>{panelCount}</span>
                                 )}
                             </button>
@@ -437,7 +447,7 @@ export default function Index({ activities }) {
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', marginTop: '12px', marginBottom: '4px', borderBottom: '1px solid #e5e5e5' }}>
+                    <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '14px', marginBottom: '0', paddingLeft: '4px' }}>
                         {STATUS_OPTS.map((o) => {
                             const active = statusFilter === o.key;
                             return (
@@ -447,21 +457,20 @@ export default function Index({ activities }) {
                                     onClick={() => setStatusFilter(o.key)}
                                     style={{
                                         display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                        padding: '8px 14px', fontSize: '12.5px', fontWeight: active ? '600' : '500',
-                                        fontFamily: 'inherit', borderRadius: '0', cursor: 'pointer', whiteSpace: 'nowrap',
-                                        border: 'none', borderBottom: '2px solid ' + (active ? '#CC0000' : 'transparent'), marginBottom: '-1px',
-                                        background: 'transparent',
-                                        color: active ? '#222' : '#777',
+                                        padding: active ? '9px 16px' : '8px 15px', fontSize: '13px', fontWeight: active ? '600' : '500',
+                                        fontFamily: 'inherit', borderRadius: '9px 9px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
+                                        border: '1px solid ' + (active ? '#e6e6e6' : '#e9e9e9'), borderBottom: 'none', marginBottom: active ? '-1px' : '0', position: 'relative', zIndex: active ? 2 : 1,
+                                        background: active ? 'white' : '#efefef', color: active ? '#222' : '#888',
                                     }}
                                 >
-                                    {o.label} <span style={{ fontSize: '11px', opacity: 0.75 }}>{statusCount(o.key)}</span>
+                                    {o.label} <span style={{ fontSize: '12px', opacity: 0.75 }}>{statusCount(o.key)}</span>
                                 </button>
                             );
                         })}
                     </div>
 
                     {anyFilter && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', padding: '10px 16px', background: 'white', border: '1px solid #ebebeb', borderBottom: 'none', borderRadius: '0 10px 0 0' }}>
                             {chips.map((c) => (
                                 <span key={c.key} style={{
                                     display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -500,20 +509,20 @@ export default function Index({ activities }) {
                     <Link href={route('admin.activities.create')} style={{ color: '#CC0000', fontSize: '13px', fontWeight: '500' }}>Create your first activity</Link>
                 </div>
             ) : (
-                <div>
+                <div style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: anyFilter ? '0 0 10px 10px' : '0 10px 10px 10px', overflow: 'hidden' }}>
                     {groups.map((g) => (
-                        <div key={g.key} style={{ marginBottom: '18px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '2px 0 10px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: '700', color: '#999', whiteSpace: 'nowrap' }}>{g.label}</span>
-                                <span style={{ flex: 1, height: '1px', background: '#e8e8e8' }} />
+                        <div key={g.key}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 16px', borderBottom: '1px solid #f0f0f0' }}>
+                                <span style={{ borderLeft: '2px solid #CC0000', paddingLeft: '8px', fontSize: '12px', fontWeight: '600', color: '#222' }}>{g.label}</span>
+                                <span style={{ fontSize: '10.5px', color: '#777', background: '#f3f3f3', padding: '1px 8px', borderRadius: '999px' }}>{g.items.length} {g.items.length === 1 ? 'activity' : 'activities'}</span>
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 {g.items.map((activity) => {
                                     const statusStyle = STATUS_STYLE[activity.status] ?? STATUS_STYLE.completed;
                                     const isOpen = openId === activity.id;
                                     return (
                                         <div key={activity.id} id={`act-${activity.id}`} className={'act-card' + ((highlightId !== null ? activity.id === highlightId : dateKey(activity.date) === toKey(new Date())) ? ' act-today' : '')} style={{
-                                            background: 'white', border: '1px solid #ebebeb', borderRadius: '12px', overflow: 'hidden',
+                                            background: 'white', borderBottom: '1px solid #f0f0f0', overflow: 'hidden',
                                         }}>
                                             <div
                                                 role="button"
@@ -521,58 +530,48 @@ export default function Index({ activities }) {
                                                 aria-expanded={isOpen}
                                                 onClick={() => setOpenId(isOpen ? null : activity.id)}
                                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(isOpen ? null : activity.id); } }}
-                                                style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', cursor: 'pointer' }}
+                                                style={{ padding: '9px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', cursor: 'pointer' }}
                                             >
                                                 <div style={{ minWidth: 0 }}>
-                                                    <h2 style={{ fontSize: '13.5px', fontWeight: '600', color: '#141414', margin: 0, wordBreak: 'break-word' }}>
+                                                    <h2 style={{ fontSize: '13px', fontWeight: '600', color: '#141414', margin: 0, wordBreak: 'break-word' }}>
                                                         {activity.name}
                                                         {statusFilter === 'all' && (
-                                                            <span style={{ marginLeft: '8px', fontSize: '10.5px', fontWeight: '600', padding: '2px 9px', borderRadius: '999px', background: statusStyle.bg, color: statusStyle.color, whiteSpace: 'nowrap', verticalAlign: '1px' }}>
+                                                            <span style={{ marginLeft: '8px', fontSize: '10px', fontWeight: '600', padding: '1px 8px', borderRadius: '999px', background: statusStyle.bg, color: statusStyle.color, whiteSpace: 'nowrap', verticalAlign: '1px' }}>
                                                                 {String(activity.status || '').charAt(0).toUpperCase() + String(activity.status || '').slice(1).toLowerCase()}
                                                             </span>
                                                         )}
                                                     </h2>
-                                                    <div style={{ marginTop: '4px', fontSize: '12px', color: '#888' }}>
+                                                    <div style={{ marginTop: '2px', fontSize: '11.5px', color: '#888' }}>
                                                         {fmtDate(activity.date)}{(activity.start_time || activity.end_time) && <>{' \u00B7 '}{fmtTime(activity.start_time)} &ndash; {fmtTime(activity.end_time)}</>}
                                                     </div>
+                                                    <div style={{ marginTop: '3px', fontSize: '11px', color: '#CC0000', fontWeight: '500' }}>{isOpen ? 'Hide details' : 'View details'} <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ verticalAlign: '-1px', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}><polyline points="6 9 12 15 18 9" /></svg></div>
                                                 </div>
-                                                <span style={{ flexShrink: 0, display: 'flex' }}>
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-                                                        style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
-                                                        <polyline points="6 9 12 15 18 9" />
-                                                    </svg>
-                                                </span>
+                                                
                                             </div>
 
                                             {isOpen && (
                                                 <div className="act-panel" style={{ borderTop: '1px solid #f0f0f0', background: '#fafafa' }}>
-                                                    <div className="act-list" style={{ padding: '18px 20px 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                                        <DetailRow label="Date" icon={<><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></>}>
-                                                            <div style={{ fontSize: '13px', color: '#222', marginTop: '2px' }}>{fmtDate(activity.date)}</div>
-                                                        </DetailRow>
-                                                        <DetailRow label="Time" icon={<><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>}>
-                                                            <div style={{ fontSize: '13px', color: '#222', marginTop: '2px' }}>{fmtTime(activity.start_time)} &ndash; {fmtTime(activity.end_time)}</div>
-                                                        </DetailRow>
-                                                        <DetailRow label="Location" icon={<><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>}>
-                                                            <div style={{ fontSize: '13px', color: '#222', marginTop: '2px', wordBreak: 'break-word' }}>{activity.location_name}</div>
-                                                        </DetailRow>
-                                                        <DetailRow label="Assignment" icon={<><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /></>}>
-                                                            <div style={{ fontSize: '13px', color: '#222', marginTop: '2px', lineHeight: '1.5', wordBreak: 'break-word' }}>{activity.description || 'No assignment specified.'}</div>
-                                                        </DetailRow>
-                                                        <DetailRow label="Assigned By" icon={<><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>}>
-                                                            <div style={{ fontSize: '13px', color: '#222', marginTop: '2px' }}>{activity.assigned_by || '\u2014'}</div>
-                                                        </DetailRow>
-                                                        <DetailRow label={`Volunteers (${activity.volunteers?.length ?? 0})`} icon={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>}>
+                                                    <div className="act-list" style={{ padding: '14px 20px 6px 24px' }}>
+                                                        <TlItem label="Where">
+                                                            <div style={{ fontSize: '13px', color: '#222', fontWeight: '500', wordBreak: 'break-word' }}>{activity.location_name || '\u2014'}</div>
+                                                        </TlItem>
+                                                        <TlItem label="Assignment">
+                                                            <div style={{ fontSize: '13px', color: '#222', fontWeight: '500', lineHeight: '1.5', wordBreak: 'break-word' }}>{activity.description || 'No assignment specified.'}</div>
+                                                        </TlItem>
+                                                        <TlItem label="Assigned by">
+                                                            <div style={{ fontSize: '13px', color: '#222', fontWeight: '500' }}>{activity.assigned_by || '\u2014'}</div>
+                                                        </TlItem>
+                                                        <TlItem label={`Volunteers (${activity.volunteers?.length ?? 0})`} last>
                                                             {(activity.volunteers?.length ?? 0) === 0 ? (
-                                                                <div style={{ fontSize: '13px', color: '#888', marginTop: '2px' }}>No volunteers assigned.</div>
+                                                                <div style={{ fontSize: '13px', color: '#888' }}>No volunteers assigned.</div>
                                                             ) : (
-                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
                                                                     {activity.volunteers.map((v) => (
                                                                         <span key={v.id} style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '999px', padding: '3px 10px', fontSize: '12px', color: '#333' }}>{v.name}</span>
                                                                     ))}
                                                                 </div>
                                                             )}
-                                                        </DetailRow>
+                                                        </TlItem>
                                                     </div>
 
                                                     <div style={{ margin: '0 20px', borderTop: '1px solid #ececec', padding: '14px 0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -618,6 +617,84 @@ export default function Index({ activities }) {
                     ))}
                 </div>
             )}
+            <div style={{ height: '72px' }} />
         </AdminShell>
+    );
+}
+
+function ActivitySummaryCards({ activities }) {
+    const list = Array.isArray(activities) ? activities : (activities && Array.isArray(activities.data) ? activities.data : []);
+    const isDone = (a) => {
+        const st = String(a.status || '').toLowerCase();
+        if (['completed', 'complete', 'done', 'finished'].includes(st)) return true;
+        if (st) return false;
+        const d = new Date(a.date || a.activity_date || a.start_date || a.start_at || '');
+        return !isNaN(d) && d < new Date();
+    };
+    const total = list.length;
+    const done = list.filter(isDone).length;
+    const left = total - done;
+    const rate = total ? Math.round((done / total) * 100) : 0;
+    const branch = list.filter((a) => String(a.type || '').toLowerCase() === 'branch').length;
+    const field = list.filter((a) => String(a.type || '').toLowerCase() === 'field').length;
+    const typed = branch + field;
+    const branchPct = typed ? Math.round((branch / typed) * 100) : 0;
+
+    const C = 144.5;
+    const Ring = ({ text, fraction, color, track, round, size = 15 }) => (
+        <svg width="46" height="46" viewBox="0 0 56 56" style={{ flexShrink: 0 }} aria-hidden="true">
+            <circle cx="28" cy="28" r="23" fill="none" stroke={track} strokeWidth="6" />
+            {fraction > 0 && (
+                <circle cx="28" cy="28" r="23" fill="none" stroke={color} strokeWidth="6"
+                    strokeLinecap={round ? 'round' : 'butt'}
+                    strokeDasharray={(C * fraction) + ' ' + C} transform="rotate(-90 28 28)" />
+            )}
+            <text x="28" y={28 + size * 0.35} textAnchor="middle" fontSize={size} fontWeight="600" fill="#222">{text}</text>
+        </svg>
+    );
+    const Line = ({ color, children }) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#666', lineHeight: 1.4 }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: color, flexShrink: 0 }} />{children}
+        </div>
+    );
+    const Card = ({ ring, title, sub, lines, pill, pillBg, pillColor }) => (
+        <div style={{ position: 'relative', background: 'white', border: '1px solid #ebebeb', borderRadius: '12px', padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ position: 'absolute', top: '10px', right: '10px' }}>
+                <line x1="7" y1="17" x2="17" y2="7" /><polyline points="8 7 17 7 17 16" />
+            </svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {ring}
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#141414' }}>{title}</div>
+                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>{sub}</div>
+                    {lines}
+                </div>
+            </div>
+            <span style={{ display: 'inline-block', marginTop: '8px', fontSize: '10.5px', fontWeight: '600', padding: '2px 8px', borderRadius: '999px', background: pillBg, color: pillColor }}>{pill}</span>
+        </div>
+    );
+
+    return (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', width: '100%', order: -1, marginBottom: '10px' }}>
+            <Card
+                title="Total activities" sub="All time"
+                ring={<Ring text={total} fraction={total ? 1 : 0} color="#2f9e5b" track="#eeeeee" />}
+                lines={<><Line color="#2f9e5b">{left} upcoming</Line><Line color="#c4c4c4">{done} done</Line></>}
+                pill={left + ' still to do'} pillBg="#eaf6ef" pillColor="#1f7a45"
+            />
+            <Card
+                title="Completion rate" sub="All activities"
+                ring={<Ring text={rate + '%'} fraction={rate / 100} color="#2f9e5b" track="#eeeeee" round size={13} />}
+                lines={<><Line color="#2f9e5b">{done} completed</Line><Line color="#c4c4c4">{left} not yet</Line></>}
+                pill={rate >= 70 ? 'On track' : 'Needs attention'}
+                pillBg={rate >= 70 ? '#eaf6ef' : '#fff4e0'} pillColor={rate >= 70 ? '#1f7a45' : '#a65f00'}
+            />
+            <Card
+                title="Branch and field" sub="By activity type"
+                ring={<Ring text={typed} fraction={typed ? branch / typed : 0} color="#CC0000" track={typed ? '#e08a00' : '#eeeeee'} />}
+                lines={<><Line color="#CC0000">{branch} branch</Line><Line color="#e08a00">{field} field</Line></>}
+                pill={branchPct + '% branch'} pillBg="#f3f3f3" pillColor="#666"
+            />
+        </div>
     );
 }

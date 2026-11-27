@@ -53,6 +53,7 @@ class AttendanceController extends Controller
 
         return Inertia::render('Admin/Attendance', [
             'attendanceReviews' => $attendanceReviews,
+            'dtrSubmissions' => \App\Models\DtrSubmission::with(['user', 'activity'])->where('status', 'pending')->latest()->get()->map(fn ($d) => $d->toUi())->values(),
             'attendances' => $attendances,
             'volunteers'  => $volunteers,
             'activities'  => $activities,
@@ -122,6 +123,9 @@ class AttendanceController extends Controller
                 $m = strtolower((string) $record->attendance_method);
                 if (str_contains($m, 'finger')) {
                     return 'Fingerprint';
+                }
+                if (str_contains($m, 'fallback')) {
+                    return 'Face + email code';
                 }
                 if (str_contains($m, 'face') || str_contains($m, 'facial')) {
                     return 'Facial recognition';

@@ -76,7 +76,7 @@ class Activity extends Model
     /** Time In is "on time" until this moment (default: 15 minutes after the start). */
     public function timeInOnTimeUntil(): Carbon
     {
-        return $this->startsAt()->copy()->addMinutes((int) config('attendance.time_in_on_time_window', 15));
+        return $this->startsAt()->copy()->addMinutes((int) config('attendance.time_in_on_time_window', 15))->endOfMinute();
     }
 
     /** Time In stays open until the activity ends. No Time In by then means Absent. */

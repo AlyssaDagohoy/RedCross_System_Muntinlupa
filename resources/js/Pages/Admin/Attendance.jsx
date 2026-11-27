@@ -1,6 +1,7 @@
 import { router } from '@inertiajs/react';
 import { useState, useEffect, useRef } from 'react';
 import ReviewPanel from '../../Components/AttendanceReviewPanel';
+import DtrReviewPanel from '../../Components/DtrReviewPanel';
 import AdminShell from '../../Components/AdminShell';
 
 const fieldStyle = {
@@ -45,6 +46,7 @@ const locationLabel = (name) => {
 const methodLabel = (m) => {
     const k = normKey(m || '');
     if (/finger/.test(k)) return 'Fingerprint';
+    if (/fallback/.test(k)) return 'Face + email code';
     if (/face|facial/.test(k)) return 'Facial recognition';
     return '';
 };
@@ -189,7 +191,112 @@ function dragMove(e) {
     applyDrag(el, d.ox + e.clientX - d.sx, d.oy + e.clientY - d.sy);
 }
 function dragUp(e) { e.currentTarget._d = null; }
-export default function AdminAttendance({ attendances, volunteers, activities, options, counts, total, filters, attendanceReviews = [] }) {
+const COL_PATHS = {
+    date: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    name: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    activity: '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>',
+    atime: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    location: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+    assigned: '<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/>',
+    in: '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>',
+    out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+    hours: '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>',
+    method: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+    status: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+    lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+};
+const COL_GROUPS = [
+    { title: 'Basics', keys: ['date', 'name', 'activity', 'atime'] },
+    { title: 'Place and people', keys: ['location', 'assigned'] },
+    { title: 'Attendance', keys: ['in', 'out', 'hours', 'method', 'status'] },
+];
+const COL_HELP = {
+    name: 'Always shown',
+    atime: 'Scheduled start and end',
+    assigned: 'Who created the activity',
+    method: 'Face, or face + email code',
+};
+const TIME_LOG_KEYS = ['name', 'activity', 'in', 'out', 'hours'];
+
+function ColIcon({ name, size = 15 }) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{ __html: COL_PATHS[name] }} />;
+}
+
+/* ColsPopover: two-column checklist */
+function ColsPopover({ visible, saveCols, toggleCol, onClose }) {
+    const shown = COLS.filter(c => visible[c.key]);
+    const sameAs = (keys) => shown.length === keys.length && shown.every(c => keys.includes(c.key));
+    const setKeys = (keys) => saveCols(Object.fromEntries(COLS.map(c => [c.key, c.locked ? true : keys.includes(c.key)])));
+    const essKeys = COLS.filter(c => c.essential).map(c => c.key);
+    const allKeys = COLS.map(c => c.key);
+
+    const presets = [
+        { label: 'Essential', keys: essKeys },
+        { label: 'Time log', keys: TIME_LOG_KEYS },
+        { label: 'Everything', keys: allKeys },
+    ];
+
+    return (
+        <div style={{ position: 'absolute', right: 0, top: '34px', width: '340px', maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto', background: 'white', border: '1px solid #ebebeb', borderRadius: '12px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', padding: '16px', zIndex: 20, boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                <div>
+                    <div style={{ fontSize: '15px', fontWeight: '600', color: '#111' }}>Customize columns</div>
+                    <div style={{ fontSize: '12px', color: '#777', marginTop: '2px' }}>Choose what you want to see in the table.</div>
+                </div>
+                <span style={{ fontSize: '11px', color: '#777', whiteSpace: 'nowrap', paddingTop: '3px' }}>{shown.length} of {COLS.length} shown</span>
+            </div>
+
+            <div style={{ display: 'flex', background: '#f5f5f6', borderRadius: '8px', padding: '2px', margin: '12px 0' }}>
+                {presets.map(p => {
+                    const act = sameAs(p.keys);
+                    return (
+                        <button key={p.label} type="button" onClick={() => setKeys(p.keys)} style={{ flex: 1, padding: '6px', fontSize: '11.5px', fontWeight: act ? '600' : '500', cursor: 'pointer', borderRadius: '6px', border: act ? '1px solid #ebebeb' : '1px solid transparent', background: act ? 'white' : 'transparent', color: act ? '#111' : '#666' }}>
+                            {p.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
+                {COLS.map(c => {
+                    const on = !!visible[c.key];
+                    const toggle = () => { if (!c.locked) toggleCol(c.key); };
+                    return (
+                        <div key={c.key} role="checkbox" aria-checked={on} aria-disabled={!!c.locked} tabIndex={c.locked ? -1 : 0}
+                            onClick={toggle}
+                            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } }}
+                            title={c.locked ? 'Always shown' : undefined}
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', cursor: c.locked ? 'default' : 'pointer', opacity: c.locked ? 0.7 : 1, outline: 'none' }}>
+                            <span style={{ width: '16px', height: '16px', borderRadius: '4px', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', border: on ? '1.5px solid #CC0000' : '1.5px solid #c9c9ce', background: on ? '#CC0000' : 'white' }}>
+                                {on && (
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+                                )}
+                            </span>
+                            <span style={{ fontSize: '12.5px', color: '#222', whiteSpace: 'nowrap' }}>{c.label}</span>
+                            {c.locked && <span style={{ color: '#aaa', display: 'flex' }}><ColIcon name="lock" size={12} /></span>}
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div style={{ borderTop: '1px solid #f0f0f0', marginTop: '10px', paddingTop: '12px' }}>
+                <div style={{ fontSize: '11px', color: '#999', marginBottom: '6px' }}>Your table will show</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {shown.map(c => (
+                        <span key={c.key} style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '6px', background: '#f5f5f6', color: '#555', border: '1px solid #ececec' }}>{c.label}</span>
+                    ))}
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px' }}>
+                <button type="button" onClick={() => saveCols(essentialCols())} style={{ border: 'none', background: 'none', padding: 0, fontSize: '12px', color: '#777', cursor: 'pointer', textDecoration: 'underline' }}>Reset to default</button>
+                <button type="button" onClick={onClose} style={{ padding: '7px 22px', border: 'none', borderRadius: '8px', background: '#CC0000', color: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Done</button>
+            </div>
+        </div>
+    );
+}
+
+export default function AdminAttendance({ attendances, volunteers, activities, options, counts, total, filters, attendanceReviews = [], dtrSubmissions = [] }) {
     const applied = fromFilters(filters);
     const [f, setF] = useState(applied);
     const [customOpen, setCustomOpen] = useState(detectPreset(applied.date_from, applied.date_to) === 'custom');
@@ -209,6 +316,20 @@ export default function AdminAttendance({ attendances, volunteers, activities, o
     const [form, setForm] = useState({ status: 'present', time_in: '', time_out: '', remark: '' });
     const [errs, setErrs] = useState({});
     const [saving, setSaving] = useState(false);
+    const [tab, setTab] = useState('records');
+
+    const deleteSelfie = (r) => {
+        if (window.confirm('Delete this selfie? The attendance record stays, but the photo cannot be recovered.')) {
+            router.delete(route('admin.attendance.fallback-photo.delete', r.id), { preserveScroll: true });
+        }
+    };
+    const selfieBtnStyle = { padding: '5px 12px', background: '#f7f7f8', border: '1px solid #ebebeb', borderRadius: '7px', fontWeight: '600', fontSize: '11px', cursor: 'pointer', marginRight: '6px', textDecoration: 'none', display: 'inline-block' };
+    const selfieBtns = (r) => (r.fallback_photo_path && r.status !== 'needs_review') ? (
+        <>
+            <a href={route('admin.attendance.fallback-photo', r.id)} target="_blank" rel="noreferrer" style={{ ...selfieBtnStyle, color: '#555' }}>View selfie</a>
+            <button type="button" onClick={() => deleteSelfie(r)} style={{ ...selfieBtnStyle, color: '#CC0000' }}>Delete selfie</button>
+        </>
+    ) : null;
 
     const apply = (next) => {
         router.get(route('admin.attendance.index'), clean(next), {
@@ -389,29 +510,30 @@ const timeOutValue = f.time_out_status === 'none' ? 'none' : matchOpt(timeOutOpt
                 .btn-export:hover { background: #aa0000 !important; }
                 .btn-filter:hover { background: #aa0000 !important; } .btn-filter-group:hover { background: #ececec !important; } .drag-card select, .drag-card button, .drag-card input, .drag-card label, .drag-card a { cursor: pointer; } div:has(> .btn-export) { margin-left: auto; }
                 .btn-clear:hover { background: #ececec !important; }
+                .btn-cols:hover { background: #f7f7f8 !important; }
                 .menu-item:hover { background: #f7f7f8 !important; }
                 .chip-x:hover { color: #CC0000 !important; }
             `}</style>
 
             {/* TOP BAR: search, filters, export */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', position: 'relative' }}>
-                <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '342px', minWidth: 0, height: '36px', marginRight: '-10px', background: 'white', border: '1px solid #e5e5e5', borderRadius: '6px 0 0 6px' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2" style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '300px', minWidth: 0, height: '38px', marginRight: '-10px', background: 'white', border: '1px solid #e3e3e3', borderRight: 'none', borderRadius: '8px 0 0 8px' }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     <input
                         type="text"
                         value={f.search}
                         onChange={e => setF({ ...f, search: e.target.value })}
                         placeholder="Search volunteer, activity, location..."
-                        style={{ ...fieldStyle, background: 'transparent', border: 'none', outline: 'none', boxShadow: 'none', borderRadius: '0', height: '100%', padding: '0 12px 0 32px', fontSize: '12.5px' }}
+                        style={{ ...fieldStyle, background: 'transparent', border: 'none', outline: 'none', boxShadow: 'none', borderRadius: '0', height: '100%', padding: '0 12px 0 34px', fontSize: '13px', fontFamily: 'inherit', color: '#111' }}
                     />
                 </div>
 
                 <div style={{ position: 'static' }}>
                     <button onClick={() => { setShowFilters(!showFilters); setShowExport(false); }} className="btn-filter-group" aria-label="Filters" title="Filters" style={{
-                        position: 'relative', padding: '0 12px', height: '36px', background: '#f7f7f7', color: '#555', border: '1px solid #e5e5e5', borderLeft: 'none', borderRadius: '0 6px 6px 0',
+                        position: 'relative', padding: '0 14px', height: '38px', background: 'white', color: '#555', border: '1px solid #e3e3e3', borderLeft: 'none', borderRadius: '0 8px 8px 0',
                         cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'background 0.15s',
                     }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="14" cy="6" r="2"/><line x1="4" y1="6" x2="12" y2="6"/><line x1="16" y1="6" x2="20" y2="6"/><circle cx="8" cy="12" r="2"/><line x1="4" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="20" y2="12"/><circle cx="17" cy="18" r="2"/><line x1="4" y1="18" x2="15" y2="18"/><line x1="19" y1="18" x2="20" y2="18"/></svg>
+                        <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: '1px', height: '18px', background: '#e3e3e3' }} /><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="14" cy="6" r="2"/><line x1="4" y1="6" x2="12" y2="6"/><line x1="16" y1="6" x2="20" y2="6"/><circle cx="8" cy="12" r="2"/><line x1="4" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="20" y2="12"/><circle cx="17" cy="18" r="2"/><line x1="4" y1="18" x2="15" y2="18"/><line x1="19" y1="18" x2="20" y2="18"/></svg>
                         
                     </button>
 
@@ -497,12 +619,27 @@ const timeOutValue = f.time_out_status === 'none' ? 'none' : matchOpt(timeOutOpt
                     )}
                 </div>
 
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                {tab === 'records' && (
+                    <div style={{ position: 'relative' }}>
+                        <button type="button" className="btn-cols" onClick={() => { setShowCols(!showCols); setShowExport(false); setShowFilters(false); }} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '38px', padding: '0 14px', background: 'white', border: '1px solid #e3e3e3', borderRadius: '8px', color: '#555', fontSize: '12px', fontWeight: '500', fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg>
+                            Columns
+                        </button>
+                        {showCols && (
+                            <>
+                                <div onClick={() => setShowCols(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
+                                <ColsPopover visible={visible} saveCols={saveCols} toggleCol={toggleCol} onClose={() => setShowCols(false)} />
+                            </>
+                        )}
+                    </div>
+                )}
                 <div style={{ position: 'relative' }}>
                     <button onClick={() => { setShowExport(!showExport); setShowFilters(false); }} className="btn-export" style={{
-                        background: '#CC0000', color: 'white', padding: '0 14px', height: '36px', border: 'none',
-                        borderRadius: '7px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '6px', transition: 'background 0.15s',
-                    }}>
+                background: '#CC0000', color: 'white', padding: '0 14px', height: '38px', border: 'none',
+                borderRadius: '8px', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', transition: 'background 0.15s',
+            }}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         Export<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
@@ -520,105 +657,80 @@ const timeOutValue = f.time_out_status === 'none' ? 'none' : matchOpt(timeOutOpt
                     )}
                 </div>
             </div>
+            </div>
 
-            {/* STATUS PILLS WITH COUNTS */}
-            <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', marginBottom: '14px', borderBottom: '1px solid #e5e5e5' }}>
-                {STATUS_PILLS.map(p => {
-                    const active = applied.status === p.value;
+            {/* STATUS TABS WITH COUNTS */}
+            <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                {[...STATUS_PILLS, { value: '__review', label: 'Needs Review', key: 'review' }].map(p => {
+                    const active = p.key === 'review' ? tab === 'review' : (tab === 'records' && applied.status === p.value);
                     return (
-                        <button key={p.key} onClick={() => pickStatus(p.value)} style={{
-                            padding: '8px 14px', borderRadius: '0', fontSize: '12px', fontWeight: active ? '600' : '500', cursor: 'pointer',
-                            background: 'transparent', color: active ? '#222' : '#777',
-                            border: 'none', borderBottom: '2px solid ' + (active ? '#CC0000' : 'transparent'), marginBottom: '-1px',
+                        <button key={p.key} onClick={() => { if (p.key === 'review') { setTab('review'); } else { setTab('records'); pickStatus(p.value); } }} style={{
+                            padding: active ? '9px 14px' : '8px 14px', borderRadius: '8px 8px 0 0', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            background: active ? 'white' : '#f7f7f8', color: active ? '#555' : '#999',
+                            border: '1px solid #ebebeb', borderBottom: active ? '1px solid white' : 'none',
+                            marginBottom: active ? '-1px' : '0', position: 'relative', zIndex: active ? 2 : 1,
                         }}>
-                            {p.label} <span style={{ opacity: 0.7, fontSize: '10.5px', marginLeft: '2px' }}>{counts?.[p.key] ?? 0}</span>
+                            {p.label} <span style={{ opacity: 0.7, fontSize: '12px', fontWeight: '500' }}>{p.key === 'review' ? attendanceReviews.length + dtrSubmissions.length : (counts?.[p.key] ?? 0)}{p.key === 'review' && (attendanceReviews.length + dtrSubmissions.length) > 0 && <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#CC0000', marginLeft: '5px', verticalAlign: 'middle' }} />}</span>
                         </button>
                     );
                 })}
+                {tab === 'records' && (
+                    <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#999', paddingBottom: '8px' }}>Showing {attendances.length} of {total ?? attendances.length} records</span>
+                )}
             </div>
 
             {/* NEEDS REVIEW BOX */}
-            <ReviewPanel records={attendanceReviews} />
+            {tab === 'review' && (dtrSubmissions.length > 0 ? <DtrReviewPanel dtrs={dtrSubmissions} attendanceCount={attendanceReviews.length}><ReviewPanel records={attendanceReviews} /></DtrReviewPanel> : <ReviewPanel records={attendanceReviews} />)}
+            {tab === 'review' && attendanceReviews.length === 0 && dtrSubmissions.length === 0 && (
+                <div style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '10px', padding: '40px', textAlign: 'center', color: '#bbb', fontSize: '12px' }}>Nothing is waiting for review.</div>
+            )}
 
-            {/* ACTIVE CHIPS + COUNT */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    {chips.map((c, i) => (
-                        <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff1f1', color: '#CC0000', border: '1px solid #f5c2c2', borderRadius: '6px', padding: '3px 9px', fontSize: '10.5px', fontWeight: '600' }}>
-                            {c.label}
-                            <span onClick={() => removeChip(c.clear)} className="chip-x" style={{ cursor: 'pointer', color: '#e57373', fontSize: '13px', lineHeight: 1 }}>&times;</span>
-                        </span>
-                    ))}
-                    {anyFilter && (
-                        <button onClick={clearAll} style={{ background: 'none', border: 'none', color: '#666', fontSize: '10.5px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>Clear all</button>
-                    )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}>
-                    <button type="button" onClick={() => setShowCols(!showCols)} style={{ padding: '5px 11px', background: 'white', color: '#555', border: '1px solid #ebebeb', borderRadius: '7px', fontWeight: '600', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg>
-                        Columns
-                    </button>
-                    <span style={{ fontSize: '11px', color: '#999' }}>Showing {attendances.length} of {total ?? attendances.length} records</span>
-                    {showCols && (
-                        <>
-                            <div onClick={() => setShowCols(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
-                            <div style={{ position: 'absolute', right: 0, top: '34px', width: '270px', maxWidth: '88vw', background: 'white', border: '1px solid #ebebeb', borderRadius: '12px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', padding: '14px', zIndex: 20, boxSizing: 'border-box' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#111' }}>Choose your columns</span>
-                                    <div style={{ display: 'flex', gap: '6px' }}>
-                                        <button type="button" onClick={() => saveCols(essentialCols())} style={{ padding: '3px 10px', background: 'white', color: '#555', border: '1px solid #ebebeb', borderRadius: '999px', fontWeight: '600', fontSize: '10.5px', cursor: 'pointer' }}>Essential</button>
-                                        <button type="button" onClick={() => saveCols(Object.fromEntries(COLS.map(c => [c.key, true])))} style={{ padding: '3px 10px', background: 'white', color: '#555', border: '1px solid #ebebeb', borderRadius: '999px', fontWeight: '600', fontSize: '10.5px', cursor: 'pointer' }}>All</button>
-                                    </div>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px' }}>
-                                    {COLS.map(c => (
-                                        <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: c.locked ? '#aaa' : '#333', cursor: c.locked ? 'default' : 'pointer' }}>
-                                            <input type="checkbox" checked={!!visible[c.key]} disabled={!!c.locked} onChange={() => toggleCol(c.key)} style={{ accentColor: '#CC0000' }} />
-                                            {c.label}{c.locked ? ' (always)' : ''}
-                                        </label>
-                                    ))}
-                                </div>
-                                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f0f0f0', fontSize: '11px', color: '#888' }}>{visibleCount} of {COLS.length} columns shown</div>
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
-
+            {tab === 'records' && (<>
             {/* TABLE */}
-            <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #ebebeb', overflow: 'hidden' }}>
+            <div style={{ background: 'white', borderRadius: '0 10px 10px 10px', border: '1px solid #e5e5e5', overflow: 'hidden' }}>
+                {anyFilter && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #f0f0f0' }}>
+                        {chips.map((c, i) => (
+                            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff1f1', color: '#CC0000', border: '1px solid #f5c2c2', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '600' }}>
+                                {c.label}
+                                <span onClick={() => removeChip(c.clear)} className="chip-x" style={{ cursor: 'pointer', color: '#e57373', fontSize: '13px', lineHeight: 1 }}>&times;</span>
+                            </span>
+                        ))}
+                        <button onClick={clearAll} style={{ background: 'none', border: 'none', color: '#666', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>Clear all</button>
+                    </div>
+                )}
                 <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: (visibleCount * 100 + 80) + 'px' }}>
                         <thead>
                             <tr style={{ background: '#fafafa' }}>
                                 {['Date', 'Name', 'Activity', 'Activity time', 'Location', 'Assigned by', 'Time in', 'Time out', 'Method', 'Hours', 'Status', ''].filter(colOn).map((h, i) => (
-                                    <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#aaa', whiteSpace: 'nowrap' }}>{h}</th>
+                                    <th key={i} style={{ padding: '10px 18px', textAlign: 'left', fontSize: '11px', fontWeight: '500', color: '#999', whiteSpace: 'nowrap' }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {attendances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={visibleCount + 1} style={{ padding: '48px', textAlign: 'center', color: '#ccc', fontSize: '12px' }}>No attendance records found.</td>
+                                    <td colSpan={visibleCount + 1} style={{ padding: '48px', textAlign: 'center', color: '#ccc', fontSize: '13px' }}>No attendance records found.</td>
                                 </tr>
                             ) : attendances.map((record) => {
                                 const label = statusLabel(record);
                                 return (
                                     <tr key={record.id} className="row-hover" style={{ borderTop: '1px solid #f5f5f5', transition: 'background 0.1s' }}>
-                                        {show('date') && <td style={{ padding: '12px 16px', fontSize: '12px', color: '#555', whiteSpace: 'nowrap' }}>{formatDate(record.date)}</td>}
-                                        <td style={{ padding: '12px 16px', fontSize: '12.5px', fontWeight: '600', color: '#111', whiteSpace: 'nowrap' }}>{record.user?.name ?? '-'}</td>
-                                        {show('activity') && <td style={{ padding: '12px 16px', fontSize: '12px', color: '#555' }}>{record.activity?.name ?? '-'}</td>}
-                                        {show('atime') && <td style={{ padding: '12px 16px', fontSize: '12px', color: '#555', whiteSpace: 'nowrap' }}>{formatSchedule(record.activity)}</td>}
-                                        {show('location') && <td style={{ padding: '12px 16px', fontSize: '12px', color: '#555' }}>{(record.activity?.type === 'branch' ? 'Branch' : locationLabel(record.activity?.location_name)) || '-'}</td>}
-                                        {show('assigned') && <td style={{ padding: '12px 16px', fontSize: '12px', color: '#555' }}>{record.activity?.assigned_by || '-'}</td>}
+                                        {show('date') && <td style={{ padding: '11px 18px', fontSize: '13px', fontWeight: '500', color: '#111', whiteSpace: 'nowrap' }}>{formatDate(record.date)}</td>}
+                                        <td style={{ padding: '11px 18px', fontSize: '13px', fontWeight: '600', color: '#111', whiteSpace: 'nowrap' }}>{record.user?.name ?? '-'}</td>
+                                        {show('activity') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555' }}><div title={record.activity?.name ?? ''} style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{record.activity?.name ?? '-'}</div></td>}
+                                        {show('atime') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{formatSchedule(record.activity)}</td>}
+                                        {show('location') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555' }}><div title={record.activity?.type === 'branch' ? 'Branch' : (locationLabel(record.activity?.location_name) || '')} style={{ maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(record.activity?.type === 'branch' ? 'Branch' : locationLabel(record.activity?.location_name)) || '-'}</div></td>}
+                                        {show('assigned') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{record.activity?.assigned_by || '-'}</td>}
                                         
-                                        {show('in') && <td style={{ padding: '12px 16px', fontSize: '12px', color: '#16a34a', fontWeight: '600', whiteSpace: 'nowrap' }}>{formatTime(record.time_in)}</td>}
-                                        {show('out') && <td style={{ padding: '12px 16px', fontSize: '12px', color: record.time_out ? '#CC0000' : '#666', fontWeight: '600', whiteSpace: 'nowrap' }}>{formatTime(record.time_out)}</td>}
-                                        {show('method') && <td style={{ padding: '12px 16px', fontSize: '12px', color: '#555', whiteSpace: 'nowrap' }}>{methodLabel(record.attendance_method) || '-'}</td>}
-                                        {show('hours') && <td style={{ padding: '12px 16px', fontSize: '12px', color: '#111', fontWeight: '600', whiteSpace: 'nowrap' }}>{record.hours_rendered ? record.hours_rendered + ' hrs' : '-'}</td>}
-                                        {show('status') && <td style={{ padding: '12px 16px' }}><Tag tone={statusTone(label)}>{label}</Tag></td>}
-                                        <td style={{ padding: '12px 16px' }}>
-                                            <button onClick={() => openEdit(record)} style={{ padding: '5px 12px', background: '#f7f7f8', color: '#555', border: '1px solid #ebebeb', borderRadius: '7px', fontWeight: '600', fontSize: '11px', cursor: 'pointer' }}>Edit</button>
+                                        {show('in') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#16a34a', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatTime(record.time_in)}</td>}
+                                        {show('out') && <td style={{ padding: '11px 18px', fontSize: '13px', color: record.time_out ? '#CC0000' : '#666', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatTime(record.time_out)}</td>}
+                                        {show('method') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{methodLabel(record.attendance_method) || '-'}</td>}
+                                        {show('hours') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#111', fontWeight: '600', whiteSpace: 'nowrap' }}>{record.hours_rendered ? record.hours_rendered + ' hrs' : '-'}</td>}
+                                        {show('status') && <td style={{ padding: '11px 18px' }}><Tag tone={statusTone(label)}>{label}</Tag></td>}
+                                        <td style={{ padding: '11px 18px', whiteSpace: 'nowrap' }}>
+                                            {selfieBtns(record)}<button onClick={() => openEdit(record)} style={{ padding: '5px 12px', background: '#f7f7f8', color: '#555', border: '1px solid #ebebeb', borderRadius: '7px', fontWeight: '600', fontSize: '11px', cursor: 'pointer' }}>Edit</button>
                                         </td>
                                     </tr>
                                 );
@@ -627,6 +739,8 @@ const timeOutValue = f.time_out_status === 'none' ? 'none' : matchOpt(timeOutOpt
                     </table>
                 </div>
             </div>
+
+            </>)}
 
             {editing && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>

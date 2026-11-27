@@ -110,6 +110,10 @@ class CommunicationController extends Controller
     private function cleanKey(?string $key): ?string
     {
         $key = trim((string) $key);
+        $own = trim((string) (auth()->user()->name ?? ''));
+        if ($own !== '' && strcasecmp($own, $key) === 0) {
+            return $own;
+        }
         foreach (\App\Support\AdminStaff::all() as $s) {
             if (strcasecmp($s, $key) === 0) {
                 return $s;
@@ -181,6 +185,7 @@ class CommunicationController extends Controller
 
     public function purge(Request $request)
     {
+        abort_unless(auth()->user() && auth()->user()->hasRole('super-admin'), 403);
         return $this->setBox($request, 'purged');
     }
 
@@ -372,6 +377,7 @@ class CommunicationController extends Controller
 
     public function purgeAnnouncement($id)
     {
+        abort_unless(auth()->user() && auth()->user()->hasRole('super-admin'), 403);
         Announcement::onlyTrashed()->findOrFail($id)->forceDelete();
 
         return back()->with('success', 'Announcement deleted forever!');

@@ -2,11 +2,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { router } from '@inertiajs/react';
 
 const STEPS = [
-    { key: 'intro', title: 'Face Registration', instruction: 'Position your face inside the oval, then hold still.' },
-    { key: 'center', title: 'Look Straight Ahead', instruction: 'Keep your face centered and still.' },
-    { key: 'left', title: 'Turn Left', instruction: 'Slowly turn your head to the left.' },
-    { key: 'right', title: 'Turn Right', instruction: 'Slowly turn your head to the right.' },
-    { key: 'blink', title: 'Blink Naturally', instruction: 'Close your eyes for a moment, then open them.' },
+    { key: 'intro', title: 'Face registration', instruction: 'Position your face inside the oval, then hold still.' },
+    { key: 'center', title: 'Look straight ahead', instruction: 'Keep your face centered and still.' },
+    { key: 'left', title: 'Turn left', instruction: 'Slowly turn your head to the left.' },
+    { key: 'right', title: 'Turn right', instruction: 'Slowly turn your head to the right.' },
+    { key: 'blink', title: 'Blink naturally', instruction: 'Close your eyes for a moment, then open them.' },
     { key: 'uploading', title: 'Saving...', instruction: 'Submitting your face profile for approval.' },
     { key: 'done', title: 'Registered', instruction: 'Your face profile has been registered successfully.' },
 ];
@@ -14,8 +14,12 @@ const STEPS = [
 const OVAL_RX = 140;
 const OVAL_RY = 180;
 const OVAL_CIRCUMFERENCE = Math.PI * (3 * (OVAL_RX + OVAL_RY) - Math.sqrt((3 * OVAL_RX + OVAL_RY) * (OVAL_RX + 3 * OVAL_RY)));
-const HOLD_FRAMES_NEEDED = 8;
+const HOLD_FRAMES_NEEDED = 6;
 const BADGE_SIZE = 40;
+const RING_CX = OVAL_RX + 12;
+const RING_CY = OVAL_RY + 12;
+const RING_PATH = `M ${RING_CX} ${RING_CY - OVAL_RY} A ${OVAL_RX} ${OVAL_RY} 0 1 1 ${RING_CX} ${RING_CY + OVAL_RY} A ${OVAL_RX} ${OVAL_RY} 0 1 1 ${RING_CX} ${RING_CY - OVAL_RY}`;
+const DEBUG = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
 
 function dist(a, b) {
     return Math.hypot(a.x - b.x, a.y - b.y);
@@ -35,10 +39,11 @@ export default function FaceRegistration({ onClose, onRegistered }) {
     const holdCounter = useRef(0);
     const blinkPhase = useRef('open');
 const earBase = useRef(0);
+    const baseRatio = useRef(0);
 
     const [faceApiReady, setFaceApiReady] = useState(false);
     const [modelsReady, setModelsReady] = useState(false);
-    const [stepIndex, setStepIndex] = useState(0);
+    const [stepIndex, setStepIndex] = useState(1);
     const [ringProgress, setRingProgress] = useState(0);
     const [ringColor, setRingColor] = useState('#e5e5e5');
     const [error, setError] = useState('');
@@ -117,6 +122,15 @@ const earBase = useRef(0);
         return canvas;
     }, []);
 
+    const captureQuick = async () => {
+        const canvas = getBrightenedCanvas();
+        if (!canvas) return null;
+        const options = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.2 });
+        return await window.faceapi
+            .detectSingleFace(canvas, options)
+            .withFaceLandmarks();
+    };
+
     const captureDescriptor = useCallback(async () => {
         const canvas = getBrightenedCanvas();
         if (!canvas) return null;
@@ -139,7 +153,8 @@ earBase.current = 0;
         const interval = setInterval(async () => {
             if (cancelled) return;
             setDetecting(true);
-            const result = await captureDescriptor();
+            const result = await captureQuick();
+            if (cancelled) { setDetecting(false); return; }
             setDetecting(false);
 
             if (!result) {
@@ -169,18 +184,20 @@ if (step.key === 'blink' && blinkPhase.current === 'open' && earBase.current > 0
 
             if (step.key === 'center') {
                 conditionMet = ratio > 0.6 && ratio < 1.7;
+                if (conditionMet) baseRatio.current = baseRatio.current ? baseRatio.current * 0.7 + ratio * 0.3 : ratio;
             } else if (step.key === 'left') {
-                conditionMet = ratio > 1.7;
+                conditionMet = ratio > (baseRatio.current || 1.2) * 1.3;
             } else if (step.key === 'right') {
-                conditionMet = ratio < 0.6;
+                conditionMet = ratio < (baseRatio.current || 1.2) * 0.77;
             } else if (step.key === 'blink') {
-                earBase.current = Math.max(earBase.current * 0.98, avgEar);
-if (avgEar > earBase.current * 0.88) {
+                if (blinkPhase.current === 'open') earBase.current = earBase.current ? earBase.current * 0.9 + avgEar * 0.1 : avgEar;
+if (avgEar > earBase.current * 0.93) {
     if (blinkPhase.current === 'closed') blinkPhase.current = 'done';
-} else if (avgEar < earBase.current * 0.78 && blinkPhase.current === 'open') {
+} else if (avgEar < earBase.current * 0.87 && blinkPhase.current === 'open') {
     blinkPhase.current = 'closed';
 }
 conditionMet = blinkPhase.current === 'done';
+                if (conditionMet) holdCounter.current = HOLD_FRAMES_NEEDED - 1;
             }
 
             if (conditionMet) {
@@ -189,6 +206,10 @@ conditionMet = blinkPhase.current === 'done';
                 setRingProgress(Math.min(1, holdCounter.current / HOLD_FRAMES_NEEDED));
 
                 if (holdCounter.current >= HOLD_FRAMES_NEEDED) {
+                    cancelled = true;
+                    const finalRes = await captureDescriptor();
+                    if (!finalRes) { cancelled = false; holdCounter.current = HOLD_FRAMES_NEEDED - 1; return; }
+                    result.descriptor = finalRes.descriptor;
                     cancelled = true;
                     descriptorsRef.current.push(Array.from(result.descriptor));
                     setRingColor('#16a34a');
@@ -203,7 +224,7 @@ conditionMet = blinkPhase.current === 'done';
                 setRingColor('#f59e0b');
                 setRingProgress(Math.min(1, holdCounter.current / HOLD_FRAMES_NEEDED));
             }
-        }, 300);
+        }, step.key === 'blink' ? 100 : 200);
 
         return () => {
             cancelled = true;
@@ -236,17 +257,22 @@ conditionMet = blinkPhase.current === 'done';
     }, [step.key]);
 
     const dashOffset = OVAL_CIRCUMFERENCE * (1 - ringProgress);
+    const turnDir = step.key === 'left' ? -1 : step.key === 'right' ? 1 : 0;
+    const ringEdgeX = RING_CX + turnDir * OVAL_RX;
+    const chevron = (tip) => `M ${tip - turnDir * 10} ${RING_CY - 16} L ${tip} ${RING_CY} L ${tip - turnDir * 10} ${RING_CY + 16}`;
+    const arrowPaths = null;
+    const statusText = ringColor === '#16a34a' ? 'Got it' : ringColor === '#DC2626' ? 'Good, hold it there' : ringColor === '#f59e0b' ? 'Keep going slowly' : (modelsReady ? 'Looking for your face...' : 'Loading camera...');
     const showsCamera = ['center', 'left', 'right', 'blink'].includes(step.key);
     const badgeDone = ringProgress >= 1;
 
     return (
         <div style={{
             position: 'fixed', inset: 0, zIndex: 2000,
-            background: showsCamera ? '#ffffff' : 'linear-gradient(135deg, #fff5f5 0%, #fee2e2 100%)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: showsCamera ? 'linear-gradient(#ffffff 35%, #fff0f0 100%)' : 'linear-gradient(135deg, #fff5f5 0%, #fee2e2 100%)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '80px', boxSizing: 'border-box', overflowY: 'auto',
             fontFamily: "'Source Sans 3', sans-serif",
         }}>
-            <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Source+Sans+3:wght@300;400;600&display=swap" rel="stylesheet" />
+            <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Source+Sans+3:wght@300;400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
 
             <button
                 onClick={() => { stopCamera(); onClose(); }}
@@ -254,19 +280,19 @@ conditionMet = blinkPhase.current === 'done';
                 style={{
                     position: 'absolute', top: '20px', right: '24px',
                     width: '36px', height: '36px', borderRadius: '50%',
-                    background: '#fff3f3', border: '1px solid #ffe2e2',
+                    background: 'transparent', border: 'none',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', color: '#DC2626',
+                    cursor: 'pointer', color: '#999',
                 }}
             >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
 
-            <div style={{ textAlign: 'center', marginBottom: '18px' }}>
-                <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: '20px', fontWeight: '700', color: '#111', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '17px', fontWeight: '700', color: '#111' }}>
                     {step.title}
                 </div>
-                <div style={{ fontSize: '13px', color: '#999', marginTop: '4px', fontWeight: '300' }}>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#555', marginTop: '6px', fontWeight: '400', background: '#ffffff', border: '1px solid #f0d5d5', padding: '5px 16px', borderRadius: '100px', display: 'inline-block' }}>
                     {step.instruction}
                 </div>
             </div>
@@ -293,9 +319,9 @@ conditionMet = blinkPhase.current === 'done';
 
             {showsCamera && (
                 <>
-                    <div style={{ position: 'relative', width: `${OVAL_RX * 2 + 24}px`, height: `${OVAL_RY * 2 + 24 + BADGE_SIZE / 2}px` }}>
+                    <div style={{ position: 'relative', width: `${OVAL_RX * 2 + 24}px`, height: `${OVAL_RY * 2 + 24}px` }}>
                         <div style={{
-                            position: 'absolute', top: 0, left: '12px',
+                            position: 'absolute', top: '12px', left: '12px',
                             width: `${OVAL_RX * 2}px`, height: `${OVAL_RY * 2}px`,
                             borderRadius: '50%', overflow: 'hidden',
                             background: '#000',
@@ -306,52 +332,46 @@ conditionMet = blinkPhase.current === 'done';
                                 style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
                             />
                         </div>
-                        <svg width={OVAL_RX * 2 + 24} height={OVAL_RY * 2 + 24} style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)' }}>
-                            <ellipse
-                                cx={OVAL_RX + 12} cy={OVAL_RY + 12} rx={OVAL_RX} ry={OVAL_RY}
-                                fill="none" stroke={ringColor} strokeWidth="6" strokeLinecap="round"
-                                strokeDasharray={OVAL_CIRCUMFERENCE}
-                                strokeDashoffset={dashOffset}
-                                style={{ transition: 'stroke-dashoffset 0.15s linear, stroke 0.2s' }}
-                            />
+                        <svg width={OVAL_RX * 2 + 24} height={OVAL_RY * 2 + 24} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }}>
+                            <path d={RING_PATH} fill="none" stroke="#eeeeee" strokeWidth="4" />
+                            {ringProgress > 0 && (
+                                <path
+                                    d={RING_PATH} fill="none" stroke={ringColor} strokeWidth="5" strokeLinecap="round"
+                                    pathLength="100" strokeDasharray={`${ringProgress * 100} 100`}
+                                    transform={step.key === 'left' ? `translate(${OVAL_RX * 2 + 24} 0) scale(-1 1)` : undefined}
+                                    style={{ transition: 'stroke-dasharray 0.15s linear, stroke 0.2s' }}
+                                />
+                            )}
+                            {arrowPaths && (
+                                <g fill="none" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d={arrowPaths[0]} />
+                                    <path d={arrowPaths[1]} opacity="0.4" />
+                                </g>
+                            )}
                         </svg>
 
-                        <div style={{
-                            position: 'absolute',
-                            bottom: 0,
-                            left: `calc(50% - ${BADGE_SIZE / 2}px)`,
-                            width: `${BADGE_SIZE}px`, height: `${BADGE_SIZE}px`,
-                            borderRadius: '50%',
-                            background: badgeDone ? '#16a34a' : 'white',
-                            border: `2px solid ${badgeDone ? '#16a34a' : '#ffe2e2'}`,
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            transition: 'background 0.2s, border 0.2s',
-                        }}>
-                            {badgeDone ? (
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                            ) : (
-                                <div style={{
-                                    width: '16px', height: '16px', borderRadius: '50%',
-                                    border: '2.5px solid #ffe2e2',
-                                    borderTopColor: detecting ? '#DC2626' : '#f0a8a8',
-                                    animation: detecting ? 'faceSpin 0.7s linear infinite' : 'none',
-                                }} />
-                            )}
-                        </div>
+
                     </div>
 
                     <style>{`@keyframes faceSpin { to { transform: rotate(360deg); } }`}</style>
 
                     <div style={{
-                        marginTop: '16px', fontFamily: 'monospace', fontSize: '11px',
-                        color: '#DC2626', background: '#fff3f3', padding: '6px 14px',
-                        borderRadius: '8px', border: '1px solid #ffe2e2',
+                        marginTop: '16px', fontFamily: 'Inter, sans-serif', fontSize: '14px', fontWeight: '500', color: ringColor === '#16a34a' ? '#16a34a' : '#B71C1C',
+                        padding: 0, borderRadius: 0,
                     }}>
-                        {debugText}
+                        {statusText}
                     </div>
-                    <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#bbb', fontWeight: '300' }}>
-                        Tip: face a light source or window for best detection.
+                    {DEBUG && (
+                        <div style={{
+                            marginTop: '8px', fontFamily: 'monospace', fontSize: '11px',
+                            color: '#DC2626', background: '#fff3f3', padding: '6px 14px',
+                            borderRadius: '8px', border: '1px solid #ffe2e2',
+                        }}>
+                            {debugText}
+                        </div>
+                    )}
+                    <div style={{ marginTop: '8px', fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#999', fontWeight: '300', display: 'flex', alignItems: 'center', gap: '6px' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z" /></svg>
+                        Face a window or light for best detection
                     </div>
                 </>
             )}
@@ -388,11 +408,11 @@ conditionMet = blinkPhase.current === 'done';
             )}
 
             {stepIndex > 0 && stepIndex < 5 && (
-                <div style={{ display: 'flex', gap: '6px', marginTop: '24px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '24px' }}>
                     {[1, 2, 3, 4].map(i => (
                         <div key={i} style={{
-                            width: '24px', height: '4px', borderRadius: '2px',
-                            background: i <= stepIndex ? '#DC2626' : '#f0d5d5',
+                            width: '8px', height: '8px', borderRadius: '50%',
+                            background: i <= stepIndex ? '#B71C1C' : '#f0d5d5',
                         }} />
                     ))}
                 </div>

@@ -35,3 +35,11 @@ Thumbs.db
 *.orig
 /backup_public_pages/
 *.undo-*
+
+*.bak*
+*.before-*
+
+liveness-backup-*/
+system-export/
+radius-backup-*.txt
+Apply-*.ps1

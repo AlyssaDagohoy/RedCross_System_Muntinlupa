@@ -133,6 +133,7 @@ export default function VolunteerShell({ active, title, notifications = [], chil
         toastTimer.current = setTimeout(() => setToast(''), 5000);
     };
     useEffect(() => () => clearTimeout(toastTimer.current), []);
+    const vpUrl = usePage().url; useEffect(() => { const key = 'vp_scroll:' + vpUrl; const el = document.querySelector('.vp-content'); let saved = null; try { saved = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (e) {} let ready = false, tries = 0, raf = 0, t = 0; const save = () => { if (!ready) return; cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { try { sessionStorage.setItem(key, JSON.stringify({ c: el ? el.scrollTop : 0, w: window.scrollY })); } catch (e) {} }); }; const restore = () => { if (!saved) { if (el) el.scrollTop = 0; ready = true; return; } if (el) el.scrollTop = saved.c || 0; window.scrollTo(0, saved.w || 0); const ok = (!saved.c || (el && Math.abs(el.scrollTop - saved.c) < 2)) && (!saved.w || Math.abs(window.scrollY - saved.w) < 2); if (!ok && tries++ < 20) { t = setTimeout(restore, 50); } else { ready = true; } }; restore(); if (el) el.addEventListener('scroll', save, { passive: true }); window.addEventListener('scroll', save, { passive: true }); return () => { clearTimeout(t); cancelAnimationFrame(raf); if (el) el.removeEventListener('scroll', save); window.removeEventListener('scroll', save); }; }, [vpUrl]);
 
     // Prompt on first access (and on later logins) until the face is registered.
     useEffect(() => {
@@ -189,6 +190,7 @@ export default function VolunteerShell({ active, title, notifications = [], chil
             items: [
                 { key: 'schedule',      label: 'Schedule',   href: route('volunteer.schedule'),      icon: <CalIcon /> },
                 { key: 'attendance',    label: 'Attendance', href: route('volunteer.attendance'),    icon: <ClockIcon /> },
+            { key: 'dtr', label: 'DTR', href: route('volunteer.dtr'), icon: <RecordsIcon /> },
                 { key: 'records',       label: 'My Records', href: safeRoute('volunteer.records'),   icon: <RecordsIcon /> },
             ],
         },
@@ -280,6 +282,78 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                     .vp-root.sb-hidden .vp-header { left: 10px !important; border-radius: 22px 22px 0 0 !important; }
                 }
                 .nav-link:not(.active):hover { background: #f5f5f6 !important; color: #111 !important; }
+                /* S2S-ORYNT-SIDEBAR: white sidebar (start) */
+                body, .vp-root { background: #fff !important; }
+                .vp-root .vp-sidebar { background: #f6f7f9 !important; border-right: 1px solid #eceef2 !important; }
+                .vp-root .nav-link { color: #7a8090 !important; border-radius: 8px !important; font-weight: 500 !important; }
+                .vp-root .nav-link.active { background: #B92F2F !important; color: #fff !important; font-weight: 500 !important; margin-right: 0 !important; border-radius: 8px !important; animation: none !important; }
+                .vp-root .nav-link.active::before, .vp-root .nav-link.active::after { display: none !important; content: none !important; }
+                .vp-root .nav-link:not(.active):hover { background: #eef0f3 !important; color: #15171c !important; }
+                .vp-root .vp-sidebar nav > div { border-top-color: #eceef2 !important; }
+                .vp-root .vp-sidebar nav > div > div:first-child { color: #a8adb9 !important; }
+                .vp-root .vp-sidebar .vp-desk-brand, .vp-root .vp-sidebar .vp-mobile-only { border-bottom-color: #eceef2 !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:first-child { background: transparent !important; padding: 0 !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:last-child > span:first-child, .vp-root .vp-sidebar .vp-mobile-only a > span:last-child > span:first-child { color: #15171c !important; }
+                .vp-root .vp-sidebar .s2s-tag { color: #7a8090 !important; }
+                .vp-root .vp-sidebar img[src*="wordmark"] { filter: brightness(0) invert(47%) sepia(99%) saturate(391%) hue-rotate(311deg) brightness(66%) contrast(143%) !important; }
+                .vp-root .vp-help-card { background: #fff !important; }
+                .vp-root .vp-help-card a { background: #B92F2F !important; }
+                .vp-root .vp-help-link { color: #7a8090 !important; }
+                .vp-root .vp-help-link:hover { background: #eef0f3 !important; color: #15171c !important; }
+                /* S2S-BRAND-RED */
+                .vp-root .vp-sidebar .vp-desk-brand { background: #B92F2F !important; border-bottom: 0 !important; }
+                .vp-root .vp-sidebar .vp-desk-brand > span:first-child { background: #fff !important; border-radius: 50% !important; padding: 3px !important; }
+                .vp-root .vp-sidebar .vp-desk-brand img[src*="wordmark"] { filter: brightness(0) invert(1) !important; }
+                .vp-root .vp-sidebar .vp-desk-brand { position: relative !important; }
+                .vp-root .vp-sidebar .vp-desk-brand::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 1px; background: rgba(255,255,255,0.18); pointer-events: none; }
+                /* S2S-RED-SIDEBAR */
+                body, .vp-root { background: #B92F2F !important; }
+                .vp-root .vp-sidebar { background: #B92F2F !important; border-right: 0 !important; }
+                .vp-root .nav-link { color: rgba(255,255,255,0.9) !important; }
+                .vp-root .nav-link.active { background: #fff !important; color: #7a4a4a !important; font-weight: 500 !important; }
+                .vp-root .nav-link:not(.active):hover { background: rgba(255,255,255,0.14) !important; color: #fff !important; }
+                .vp-root .vp-sidebar nav > div { border-top-color: rgba(255,255,255,0.18) !important; }
+                .vp-root .vp-sidebar nav > div > div:first-child { color: rgba(255,255,255,0.6) !important; }
+                .vp-root .vp-help-row { border-top-color: rgba(255,255,255,0.18) !important; }
+                .vp-root .vp-help-link { color: rgba(255,255,255,0.9) !important; }
+                .vp-root .vp-help-link:hover { background: rgba(255,255,255,0.14) !important; color: #fff !important; }
+                .vp-root .vp-sidebar img[src*="wordmark"] { filter: brightness(0) invert(1) !important; }
+                .vp-root .vp-sidebar .vp-mobile-only { border-bottom-color: rgba(255,255,255,0.18) !important; }
+                .vp-root .vp-sidebar .vp-mobile-only a > span:first-child { background: #fff !important; border-radius: 50% !important; padding: 3px !important; }
+                .vp-root .vp-sidebar .vp-mobile-only > span:nth-of-type(1) { background: #8F2222 !important; }
+                .vp-root .vp-sidebar .vp-mobile-only > span:nth-of-type(2) > span:first-child { color: #fff !important; }
+                .vp-root .vp-sidebar .vp-mobile-only > span:nth-of-type(2) > span:last-child { color: rgba(255,255,255,0.75) !important; }
+                /* S2S-EXPAND-WHITE */
+                @media (min-width: ${MOBILE_BREAKPOINT + 1}px) {
+                    .vp-root .vp-content { top: 0 !important; right: 0 !important; bottom: 0 !important; border-radius: 22px 0 0 22px !important; }
+                    .vp-root .vp-header { top: 0 !important; right: 0 !important; border-radius: 22px 0 0 0 !important; }
+                    .vp-root.sb-hidden .vp-content { left: 0 !important; border-radius: 0 !important; }
+                    .vp-root.sb-hidden .vp-header { left: 0 !important; border-radius: 0 !important; }
+                }
+                /* S2S-GRAY-CONTENT-START */
+                .vp-root .vp-content { background: #F3F4F6 !important; }
+                .vp-root .vp-header { background: #FFFFFF !important; border-bottom: 1px solid #E5E7EB !important; }
+                /* S2S-GRAY-CONTENT-END */
+                /* S2S-HEADER-PLAIN */
+                /* S2S-HEADER-V2 */
+                .vp-root .vp-hd-date { display: none !important; }
+                @media (min-width: ${MOBILE_BREAKPOINT + 1}px) {
+                    .vp-root .vp-page-title { display: flex !important; align-items: baseline; gap: 0; padding-left: 14px !important; }
+                    .vp-root .vp-pt-main { font-size: 14px !important; font-weight: 500 !important; line-height: 1.2 !important; } /* S2S-TITLE-DOT */
+                    .vp-root .vp-pt-main::after { content: ""; display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: #9CA3AF; margin: 0 10px; vertical-align: middle; }
+                    .vp-root .vp-pt-date { display: block !important; margin-top: 0 !important; font-size: 12px !important; font-weight: 400 !important; color: #6B7280 !important; line-height: 1.2 !important; }
+                    .vp-root .vp-pt-date b { color: #6B7280 !important; font-weight: 400 !important; }
+                    .vp-root .vp-pt-date b::after { content: ","; }
+                    .vp-root .vp-hd-right { gap: 14px !important; }
+                    .vp-root .vp-hd-right .icon-btn[aria-label="Notifications"] { border: 0 !important; background: transparent !important; width: 34px !important; height: 34px !important; }
+                    .vp-root .vp-hd-right .icon-btn[aria-label="Notifications"]:hover { background: #F3F4F6 !important; }
+                    .vp-root .vp-hd-right .chip-btn { border: 0 !important; background: transparent !important; padding: 4px 6px 4px 4px !important; border-radius: 8px !important; }
+                    .vp-root .vp-hd-right .chip-btn:hover { background: #F3F4F6 !important; }
+                    .vp-root .vp-hd-right .vp-userinfo { max-width: 240px !important; }
+                    .vp-root .vp-hd-right .vp-userinfo > span:first-child { font-size: 13px !important; font-weight: 500 !important; }
+                }
+                /* S2S-HEADER-PLAIN-END */
+                /* S2S-ORYNT-SIDEBAR-END */
                 .logout-btn:hover { background: #ffe3e3 !important; }
                 .task-row:hover { background: #fafafa !important; }
                 .notif-item:hover { background: #f9f9f9 !important; }
@@ -421,6 +495,7 @@ export default function VolunteerShell({ active, title, notifications = [], chil
 
                     {/* Search, notifications, user */}
                     <div className="vp-hd-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className="vp-hd-date">{todayParts().weekday}, {todayParts().date}</span>
                         {/* Notifications */}
                         <div ref={notifRef} style={{ position: 'relative' }}>
                             <button className="icon-btn" aria-label="Notifications" aria-expanded={showNotifications} onClick={toggleNotifications} style={{
@@ -433,50 +508,7 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                                 )}
                             </button>
 
-                            {showNotifications && (
-                                <div style={{ position: 'absolute', right: 0, top: '46px', width: '300px', maxWidth: 'calc(100vw - 32px)', background: 'white', borderRadius: '12px', border: '1px solid #ebebeb', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', zIndex: 200, overflow: 'hidden' }}>
-                                    <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#111' }}>Notifications</span>
-                                        <span style={{ fontSize: '10px', color: '#CC0000', fontWeight: '500', background: '#fff0f0', padding: '2px 7px', borderRadius: '10px' }}>{newCount} new</span>
-                                    </div>
-                                    <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
-                                        {bellItems.length === 0 ? (
-                                            <div style={{ padding: '28px', textAlign: 'center', color: '#bbb', fontSize: '12px' }}>No notifications</div>
-                                        ) : (
-                                            bellItems.slice(0, 5).map((n, i) => (
-                                                <button
-                                                    key={n.id ?? i}
-                                                    type="button"
-                                                    className="notif-item"
-                                                    onClick={() => handleNotificationClick(n)}
-                                                    style={{
-                                                        width: '100%', textAlign: 'left', padding: '11px 16px', borderBottom: '1px solid #f5f5f5',
-                                                        display: 'flex', gap: '11px', cursor: 'pointer', border: 'none', borderBottomWidth: '1px',
-                                                        background: n.read === false ? '#fdf8f8' : 'transparent', fontFamily: 'inherit',
-                                                    }}
-                                                >
-                                                    <NotifCategoryIcon category={n.category} />
-                                                    <div style={{ minWidth: 0, flex: 1 }}>
-                                                        <div style={{ fontSize: '11px', fontWeight: n.read === false ? '700' : '500', color: '#222' }}>{n.title}</div>
-                                                        {n.body && (
-                                                            <div style={{ fontSize: '10px', color: '#888', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                {n.body}
-                                                            </div>
-                                                        )}
-                                                        <div style={{ fontSize: '10px', color: '#bbb', marginTop: '2px' }}>{n.time}</div>
-                                                    </div>
-                                                    {n.read === false && (
-                                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#CC0000', flexShrink: 0, marginTop: '4px' }} />
-                                                    )}
-                                                </button>
-                                            ))
-                                        )}
-                                    </div>
-                                    <div style={{ padding: '10px 16px', borderTop: '1px solid #f0f0f0', textAlign: 'center' }}>
-                                        <Link href={safeRoute('volunteer.notifications', '#')} onClick={() => setShowNotifications(false)} style={{ fontSize: '11px', color: '#CC0000', fontWeight: '500', textDecoration: 'none' }}>View all →</Link>
-                                    </div>
-                                </div>
-                            )}
+                            {showNotifications && <NotifDropdown items={bellItems} newCount={newCount} onItemClick={handleNotificationClick} onClose={() => setShowNotifications(false)} viewAllHref={safeRoute('volunteer.notifications', '#')} />}
                         </div>
 
                         {/* User */}
@@ -486,7 +518,7 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                                 border: '1px solid #ebebeb', background: showUserMenu ? '#f5f5f6' : 'white', cursor: 'pointer', fontFamily: 'inherit',
                             }}>
                                 <span style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#CC0000', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600', flexShrink: 0 }}>
-                                    {volunteer?.name?.charAt(0).toUpperCase()}
+                                    {volunteer?.photo ? <img src={'/storage/' + volunteer.photo} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} /> : volunteer?.name?.charAt(0).toUpperCase()}
                                 </span>
                                 <span className="vp-userinfo" style={{ textAlign: 'left', lineHeight: 1.2, maxWidth: '130px' }}>
                                     <span style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{volunteer?.name}</span>
@@ -532,13 +564,10 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                                     ? <img src={LOGO_SRC} alt="" onError={() => setLogoFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                     : <RedCrossMark />}
                             </span>
-                            <span style={{ lineHeight: 1.2 }}>
-                                <span style={{ display: 'block', fontSize: '15px', fontWeight: '700', color: '#111' }}>Scan<span style={{ color: '#dc2626' }}>2</span>Serve</span>
-                                <span className="s2s-tag" style={{ display: 'block', fontSize: '9px', marginTop: '3px', whiteSpace: 'nowrap' }}>Muntinlupa Branch</span>
-                            </span>
+                            <img src="/scan2serve-wordmark.png" alt="Scan2Serve Muntinlupa Branch" style={{ height: "36px", width: "auto", display: "block", alignSelf: "center", position: "relative", top: "-0.5px", marginLeft: "-4px" }} />
                         </Link>
                         <span className="vp-dr-user" style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#CC0000', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '600', flexShrink: 0 }}>
-                            {volunteer?.name?.charAt(0).toUpperCase()}
+                            {volunteer?.photo ? <img src={'/storage/' + volunteer.photo} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} /> : volunteer?.name?.charAt(0).toUpperCase()}
                         </span>
                         <span className="vp-dr-user" style={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
                             <span style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{volunteer?.name}</span>
@@ -558,10 +587,7 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                                 ? <img src={LOGO_SRC} alt="" onError={() => setLogoFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                 : <RedCrossMark />}
                         </span>
-                        <span style={{ lineHeight: 1.2 }}>
-                            <span style={{ display: 'block', fontSize: '15px', fontWeight: '700', color: '#111' }}>Scan<span style={{ color: '#dc2626' }}>2</span>Serve</span>
-                            <span className="s2s-tag" style={{ display: 'block', fontSize: '9px', marginTop: '3px', whiteSpace: 'nowrap' }}>Muntinlupa Branch</span>
-                        </span>
+                        <img src="/scan2serve-wordmark.png" alt="Scan2Serve Muntinlupa Branch" style={{ height: "36px", width: "auto", display: "block", alignSelf: "center", position: "relative", top: "-0.5px", marginLeft: "-4px" }} />
                     </Link>
                     <nav aria-label="Volunteer portal" style={{ flex: 1, overflowY: 'auto', padding: '14px 10px 8px' }}>
                         {navGroups.map((group, gi) => (
@@ -571,6 +597,13 @@ export default function VolunteerShell({ active, title, notifications = [], chil
                             </div>
                         ))}
                     </nav>
+          <div className="vp-help-row" style={{ padding: '10px 10px 12px', borderTop: '1px solid #eceef2' }}>
+              <Link href={route('volunteer.communication')} onClick={() => setNavOpen(false)} className="vp-help-link" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '10px', textDecoration: 'none', fontSize: '12px', fontWeight: 500 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5" /><line x1="12" y1="17.5" x2="12" y2="17.51" /></svg>
+                <span style={{ flex: 1 }}>Help and support</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18" /></svg>
+              </Link>
+            </div>
 
                 </aside>
 
@@ -689,4 +722,82 @@ function LogoutIcon() {
 }
 function CameraIcon() {
     return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg>;
+}
+
+// NotifDropdown v2
+function NotifDropdown({ items, newCount, onItemClick, onClose, viewAllHref }) {
+  const [tab, setTab] = useState('all');
+  const all = Array.isArray(items) ? items : [];
+  const list = all.filter((n) => tab === 'all' || n.read === false);
+  const fresh = list.filter((n) => n.read === false);
+  const earlier = list.filter((n) => n.read !== false);
+  const kind = (n) => {
+    const t = String(n.title || '').toLowerCase();
+    if (t.startsWith('timed out')) return 'out';
+    if (t.startsWith('timed in')) return 'in';
+    return 'other';
+  };
+  const BADGE = {
+    in: { bg: '#2E9E6B', icon: (<g><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></g>) },
+    out: { bg: '#B92F2F', icon: (<g><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></g>) },
+    other: { bg: '#6b7280', icon: (<g><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></g>) },
+  };
+  const row = (n, i) => {
+    const b = BADGE[kind(n)];
+    const unread = n.read === false;
+    return (
+      <button key={n.id ?? i} type="button" className="notif-item" onClick={() => onItemClick(n)}
+        style={{ width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: '10px', display: 'flex', gap: '10px', alignItems: 'center', cursor: 'pointer', border: 'none', background: 'transparent', fontFamily: 'inherit' }}>
+        <span style={{ position: 'relative', width: '40px', height: '40px', flexShrink: 0, display: 'block' }}>
+          <span style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fff', border: '1px solid #e5e5e5', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', overflow: 'hidden' }}>
+            <img src="/images/redcross_logo.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px', boxSizing: 'border-box' }} />
+          </span>
+          <span style={{ position: 'absolute', right: '-3px', bottom: '-3px', width: '18px', height: '18px', borderRadius: '50%', background: b.bg, border: '1.5px solid #fff', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{b.icon}</svg>
+          </span>
+        </span>
+        <span style={{ minWidth: 0, flex: 1, display: 'block' }}>
+          <span style={{ display: 'block', fontSize: '12px', lineHeight: 1.3, fontWeight: unread ? 600 : 400, color: unread ? '#111' : '#666' }}>{n.title}</span>
+          {n.body && <span title={n.body} style={{ display: 'block', fontSize: '11px', color: '#888', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.body}</span>}
+          <span style={{ display: 'block', fontSize: '10px', marginTop: '2px', color: unread ? '#B92F2F' : '#aaa', fontWeight: unread ? 600 : 400 }}>{n.time}</span>
+        </span>
+        {unread && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#B92F2F', flexShrink: 0 }} />}
+      </button>
+    );
+  };
+  const head = (label) => (
+    <div style={{ padding: '8px 10px 2px', fontSize: '12px', fontWeight: 600, color: '#111' }}>{label}</div>
+  );
+  const tabBtn = (key, label, count) => (
+    <button type="button" onClick={() => setTab(key)}
+      style={{ cursor: 'pointer', fontFamily: 'inherit', padding: '4px 12px', borderRadius: '10px', fontSize: '11px', background: tab === key ? '#F3F4F6' : 'transparent', border: '1px solid transparent', color: tab === key ? '#111827' : '#888', fontWeight: tab === key ? 600 : 400 }}>
+      {label}{count > 0 ? <span style={{ marginLeft: '5px', background: '#B92F2F', color: '#fff', borderRadius: '999px', padding: '0 6px', fontSize: '10px' }}>{count}</span> : null}
+    </button>
+  );
+  return (
+    <div style={{ position: 'absolute', right: 0, top: '46px', width: '320px', maxWidth: 'calc(100vw - 32px)', background: 'white', borderRadius: '12px', border: '1px solid #ebebeb', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', zIndex: 200, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 14px 6px' }}>
+        <span style={{ fontSize: '15px', fontWeight: 700, color: '#111' }}>Notifications</span>
+      </div>
+      <div style={{ padding: '0 10px 8px', display: 'flex', gap: '4px' }}>
+        {tabBtn('all', 'All', 0)}
+        {tabBtn('unread', 'Unread', newCount || 0)}
+      </div>
+      <div style={{ maxHeight: '340px', overflowY: 'auto', padding: '0 4px 6px', borderTop: '1px solid #f0f0f0' }}>
+        {list.length === 0 ? (
+          <div style={{ padding: '28px 16px', textAlign: 'center', color: '#bbb', fontSize: '12px' }}>{tab === 'unread' ? "You're all caught up" : 'No notifications'}</div>
+        ) : (
+          <>
+            {fresh.length > 0 && head('New')}
+            {fresh.map(row)}
+            {earlier.length > 0 && head('Earlier')}
+            {earlier.map(row)}
+          </>
+        )}
+      </div>
+      <div style={{ padding: '10px 18px', borderTop: '1px solid #f5f5f5', textAlign: 'center' }}>
+        <Link href={viewAllHref} onClick={onClose} style={{ fontSize: '10.5px', color: '#333', fontWeight: 400, textDecoration: 'none' }}>View All</Link>
+      </div>
+    </div>
+  );
 }

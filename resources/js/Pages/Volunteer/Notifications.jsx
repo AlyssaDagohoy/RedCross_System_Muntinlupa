@@ -98,11 +98,13 @@ export default function Notifications({ notifications = [] }) {
             <div>
 
                 {/* Header */}
-                <div className="notif-header-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+                <div className="notif-header-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: unreadCount > 0 ? '18px' : '0' }}>
                     <div>
-                        <p style={{ fontSize: '13.5px', color: '#888', marginTop: '4px' }}>
-                            {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}` : "You're all caught up."}
-                        </p>
+                        {unreadCount > 0 && (
+                            <p style={{ fontSize: '13.5px', color: '#888', marginTop: '4px' }}>
+                                {`${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`}
+                            </p>
+                        )}
                     </div>
                     {unreadCount > 0 && (
                         <button
@@ -119,46 +121,69 @@ export default function Notifications({ notifications = [] }) {
                 </div>
 
                 {/* Filters */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', flexWrap: 'wrap' }}>
-                    {FILTERS.map((f) => (
-                        <button
-                            key={f.key}
-                            type="button"
-                            onClick={() => setFilter(f.key)}
-                            className={`filter-btn${filter === f.key ? ' active' : ''}`}
-                            style={{
-                                padding: '8px 14px', fontSize: '12.5px', fontWeight: '600', fontFamily: 'inherit',
-                                borderRadius: '999px', cursor: 'pointer',
-                            }}
-                        >
-                            {f.label} {counts[f.key] > 0 && <span style={{ opacity: 0.6 }}>· {counts[f.key]}</span>}
-                        </button>
-                    ))}
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px' }}>
+                    {FILTERS.map((f) => {
+                        const active = filter === f.key;
+                        return (
+                            <button
+                                key={f.key}
+                                type="button"
+                                aria-pressed={active}
+                                onClick={() => setFilter(f.key)}
+                                style={{
+                                    padding: active ? '9px 14px' : '8px 14px', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit',
+                                    color: active ? '#555' : '#999', background: active ? 'white' : '#f7f7f8',
+                                    border: '1px solid #ebebeb', borderBottom: active ? '1px solid white' : 'none',
+                                    borderRadius: '8px 8px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
+                                    position: 'relative', zIndex: active ? 2 : 1, marginBottom: active ? '-1px' : '0',
+                                }}
+                            >
+                                {f.label} {counts[f.key] > 0 && <span style={{ opacity: 0.6 }}>· {counts[f.key]}</span>}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {/* List */}
-                {filtered.length === 0 ? (
-                    <div style={{ padding: '56px 16px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>
-                            No notifications
+                <div className="notif-rows" style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '0 10px 10px 10px', overflow: 'hidden', marginBottom: '8px' }}>
+                    {filtered.length === 0 ? (
+                        <div style={{ padding: '56px 16px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '14px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>
+                                No notifications
+                            </div>
+                            <p style={{ fontSize: '13px', color: '#aaa' }}>
+                                {filter === 'all' ? "You don't have any notifications yet." : `No ${CATEGORY_LABEL[filter].toLowerCase()} notifications yet.`}
+                            </p>
                         </div>
-                        <p style={{ fontSize: '13px', color: '#aaa' }}>
-                            {filter === 'all' ? "You don't have any notifications yet." : `No ${CATEGORY_LABEL[filter].toLowerCase()} notifications yet.`}
-                        </p>
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {filtered.map((n) => (
-                            <NotificationCard key={n.id} n={n} onOpen={() => handleOpen(n)} />
-                        ))}
-                    </div>
-                )}
+                    ) : (
+                        filtered.map((n, i) => (
+                            <NotificationCard key={n.id} n={n} first={i === 0} onOpen={() => handleOpen(n)} />
+                        ))
+                    )}
+                </div>
             </div>
         </VolunteerShell>
     );
 }
 
-function NotificationCard({ n, onOpen }) {
+function NotificationCard({ n, onOpen, first }) {
+    const t = String(n.title || '').toLowerCase();
+    const kind = t.startsWith('timed out') ? 'out' : t.startsWith('timed in') ? 'in' : n.category;
+    const common = { width: 17, height: 17, viewBox: '0 0 24 24', fill: 'none', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    const STYLES = {
+        in: { bg: '#E4F4EC', c: '#1E7F55', icon: <svg {...common} stroke="#1E7F55"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg> },
+        out: { bg: '#FBE9E9', c: '#B92F2F', icon: <svg {...common} stroke="#B92F2F"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg> },
+        attendance: { bg: '#E4F4EC', c: '#1E7F55', icon: <svg {...common} stroke="#1E7F55"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg> },
+        system: { bg: '#F1EBFB', c: '#8a5cd6', icon: <svg {...common} stroke="#8a5cd6"><circle cx="12" cy="8" r="3.5" /><path d="M5.5 21a6.5 6.5 0 0 1 13 0" /></svg> },
+        activity: { bg: '#FBE9E9', c: '#CC0000', icon: <svg {...common} stroke="#CC0000"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></svg> },
+    };
+    const s = STYLES[kind] || STYLES.activity;
+    const BADGE = {
+        in: { bg: '#2E9E6B', icon: <g><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></g> },
+        out: { bg: '#B92F2F', icon: <g><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></g> },
+        other: { bg: '#6b7280', icon: <g><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></g> },
+    };
+    const bd = BADGE[kind === 'in' || kind === 'out' ? kind : 'other'];
     return (
         <button
             type="button"
@@ -166,31 +191,32 @@ function NotificationCard({ n, onOpen }) {
             onClick={onOpen}
             style={{
                 width: '100%', display: 'flex', gap: '12px', alignItems: 'flex-start', textAlign: 'left',
-                padding: '15px 16px', borderRadius: '12px', cursor: 'pointer', fontFamily: 'inherit',
-                border: '1px solid #ebebeb', background: n.read ? 'white' : '#fdf8f8',
-                borderLeft: n.read ? '1px solid #ebebeb' : '3px solid #CC0000',
+                padding: '13px 16px', borderRadius: 0, cursor: 'pointer', fontFamily: 'inherit',
+                border: 'none', borderTop: first ? 'none' : '1px solid #f0f0f0', background: n.read ? 'white' : '#fdf8f8',
             }}
         >
-            <span style={{ marginTop: '2px', flexShrink: 0 }}><CategoryIcon category={n.category} /></span>
-
-            <span style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '14px', fontWeight: n.read ? '500' : '700', color: '#141414' }}>
-                        {n.title}
-                    </span>
-                    <span style={{ fontSize: '11px', color: '#bbb' }}>{formatRelativeTime(n.created_at)}</span>
+            <span style={{ position: 'relative', width: '44px', height: '44px', flexShrink: 0, display: 'block' }}>
+                <span style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#fff', border: '1px solid #e5e5e5', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', overflow: 'hidden' }}>
+                    <img src="/images/redcross_logo.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '5px', boxSizing: 'border-box' }} />
                 </span>
-                <span style={{ display: 'block', fontSize: '12.5px', color: '#777', marginTop: '3px' }}>
-                    {n.message}
+                <span style={{ position: 'absolute', right: '-3px', bottom: '-3px', width: '20px', height: '20px', borderRadius: '50%', background: bd.bg, border: '2px solid #fff', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{bd.icon}</svg>
                 </span>
-                {n.action_label && (
-                    <span style={{ display: 'inline-block', fontSize: '12px', fontWeight: '600', color: '#CC0000', marginTop: '8px' }}>
-                        {n.action_label} →
-                    </span>
-                )}
             </span>
 
-            {!n.read && <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#CC0000', flexShrink: 0, marginTop: '6px' }} />}
+            <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ display: 'block', fontSize: '13px', fontWeight: n.read ? '500' : '700', color: '#141414' }}>
+                    {n.title}
+                </span>
+                <span style={{ display: 'block', fontSize: '12px', color: '#777', marginTop: '2px' }}>
+                    {n.message}
+                </span>
+            </span>
+
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginTop: '2px' }}>
+                <span style={{ fontSize: '11px', color: '#aaa', whiteSpace: 'nowrap' }}>{formatRelativeTime(n.created_at)}</span>
+                {!n.read && <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#CC0000' }} />}
+            </span>
         </button>
     );
 }
