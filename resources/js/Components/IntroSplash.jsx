@@ -27,6 +27,7 @@ export default function IntroSplash({ authed = false }) {
     const guarded = useRef(false);
     const skip = useRef(false);
     const leaving = useRef(false);
+    const fromGoogle = useRef(typeof window !== 'undefined' && /^\/register/.test(window.location.pathname) && /[?&]email=/.test(window.location.search));
     showRef.current = show;
     goRef.current = go;
 
@@ -51,7 +52,7 @@ export default function IntroSplash({ authed = false }) {
         const onPop = (e) => {
             if (leaving.current || !guest.current) return;
             if (skip.current) { skip.current = false; return; }
-            if (!guarded.current) return;
+            return; /* history guard disabled */
             if (!GUEST_PATH.test(window.location.pathname)) return;
             const lvl = (e.state && e.state.rc) || 0;
             if (lvl >= 3) return;
@@ -136,22 +137,40 @@ export default function IntroSplash({ authed = false }) {
         try {
             const u = new URL(href('login', '/login'), window.location.origin);
             path = u.pathname + u.search;
-            same = u.pathname === window.location.pathname;
+            same = u.pathname === window.location.pathname || fromGoogle.current;
         } catch (err) {}
         if (same) {
             if (guest.current) {
                 try {
                     const cur = rcLevel();
                     const st = { ...(window.history.state || {}) };
-                    for (let i = cur + 1; i <= 3; i++) { window.history.pushState({ ...st, rc: i }, "", window.location.href); }
+                    
                     guarded.current = true;
                 } catch (err) {}
             }
             land();
             return;
         }
-        router.visit(path, { onFinish: land });
+        router.visit(path, {
+            onFinish: () => {
+                if (guest.current) {
+                    try {
+                        const cur = rcLevel();
+                        const st = { ...(window.history.state || {}) };
+                        
+                        guarded.current = true;
+                    } catch (err) {}
+                }
+                land();
+            },
+        });
     };
+
+    useEffect(() => {
+        if (!fromGoogle.current) return undefined;
+        const t = setTimeout(proceed, 500);
+        return () => clearTimeout(t);
+    }, []);
 
     const onKey = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); proceed(); } };
 

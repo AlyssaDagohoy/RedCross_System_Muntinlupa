@@ -111,7 +111,21 @@ class DtrController extends Controller
             'status'      => 'pending',
         ]);
 
-        return back()->with('success', 'DTR submitted. The admin will review it.');
+        // pending DTR shows as Needs review
+        $attRow = Attendance::where('user_id', $user->id)->where('activity_id', $activity->id)->first();
+        if (!$attRow) {
+            Attendance::create([
+                'user_id'           => $user->id,
+                'activity_id'       => $activity->id,
+                'date'              => $actDate->toDateString(),
+                'status'            => 'needs_review',
+                'attendance_method' => 'dtr',
+            ]);
+        } elseif ($attRow->status === 'absent') {
+            $attRow->update(['status' => 'needs_review', 'attendance_method' => 'dtr']);
+        }
+
+return back()->with('success', 'DTR submitted. The admin will review it.');
     }
 
     public function proof(DtrSubmission $dtr)

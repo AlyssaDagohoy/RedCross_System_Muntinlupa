@@ -34,7 +34,19 @@ class CommunicationController extends Controller
 
         return Inertia::render(request()->boolean('classic') ? 'Volunteer/Communication' : 'Volunteer/Chat', [
             'sentEmails' => $sentEmails,
-            'announcements' => \App\Models\Announcement::whereNull('archived_at')->latest()->take(10)->get(), 'staff' => \App\Support\AdminStaff::all(), 'groupChat' => array_merge(\App\Support\ChatGroup::get(), \App\Support\ChatGroup::feed()),
+            'announcements' => \App\Models\Announcement::whereNull('archived_at')->orderByRaw('pinned_at IS NULL')->latest()->take(10)->get(), 'staff' => \App\Support\AdminStaff::all(), 'groupChat' => array_merge(\App\Support\ChatGroup::get(), \App\Support\ChatGroup::feed()),
+        ]);
+    }
+
+    public function announcements(Request $request)
+    {
+        return Inertia::render('Volunteer/Announcements', [
+            'announcements' => \App\Models\Announcement::with('admin:id,name')
+                ->whereNull('archived_at')
+                ->orderByRaw('pinned_at IS NULL')
+                ->latest()
+                ->take(30)
+                ->get(),
         ]);
     }
 

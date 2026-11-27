@@ -122,6 +122,18 @@ function TlItem({ label, last, children }) {
 }
 
 export default function Index({ activities }) {
+    // auto-refresh statuses
+    useEffect(() => {
+        const tick = () => {
+            if (document.visibilityState === 'visible') router.reload({ preserveScroll: true });
+        };
+        const id = setInterval(tick, 60000);
+        document.addEventListener('visibilitychange', tick);
+        return () => {
+            clearInterval(id);
+            document.removeEventListener('visibilitychange', tick);
+        };
+    }, []);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState(() => { try { const s = new URLSearchParams(window.location.search).get('status'); return ['upcoming', 'ongoing', 'completed', 'cancelled'].includes(s) ? s : 'all'; } catch { return 'all'; } });
     const [datePreset, setDatePreset] = useState('all');
@@ -188,14 +200,14 @@ export default function Index({ activities }) {
         if (dx === null && dy === null) return 0;
         if (dx === null) return 1;
         if (dy === null) return -1;
-        return dir * (dx - dy) || byTime(x, y);
+        return dir * (dx - dy) || (dir < 0 ? -byTime(x, y) : byTime(x, y));
     };
     const byNearest = (x, y) => {
         const dx = dayMs(x);
         const dy = dayMs(y);
         const ax = dx === null ? Infinity : Math.abs(dx - todayMs);
         const ay = dy === null ? Infinity : Math.abs(dy - todayMs);
-        if (ax === ay) return byTime(x, y);
+        if (ax === ay) return dx === dy ? -byTime(x, y) : dy - dx;
         return ax < ay ? -1 : 1;
     };
 

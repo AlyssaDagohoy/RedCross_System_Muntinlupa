@@ -51,7 +51,7 @@ class ChatGroup
                 return ['messages' => [], 'readAt' => null];
             }
 
-            $me = self::reader();
+            $me = self::reader(); $u = auth()->user(); $joined = ($u && ! $u->hasAnyRole(['admin', 'Admin'])) ? ($u->approved_at ? \Carbon\Carbon::parse($u->approved_at) : $u->created_at) : null;
             $readRows = DB::table('group_reads')->whereNotNull('read_at')->where('reader', '!=', $me)->get(['reader', 'read_at']);
             $volIds = $readRows->filter(fn ($r) => str_starts_with($r->reader, 'v:'))->map(fn ($r) => (int) substr($r->reader, 2))->all();
             $volUsers = $volIds ? \App\Models\User::whereIn('id', $volIds)->get(['id', 'name', 'photo'])->keyBy('id') : collect();
@@ -68,7 +68,7 @@ class ChatGroup
                 ];
             })->values();
 
-            $messages = \App\Models\GroupMessage::orderByDesc('id')->limit(1500)->get()->reverse()->values()
+            $messages = \App\Models\GroupMessage::when($joined, fn ($q) => $q->where('created_at', '>=', $joined))->orderByDesc('id')->limit(1500)->get()->reverse()->values()
                 ->map(fn ($m) => [
                     'id'              => $m->id,
                     'user_id'         => $m->user_id,
@@ -85,9 +85,30 @@ class ChatGroup
 
             $read = DB::table('group_reads')->where('reader', self::reader())->value('read_at');
 
-            return ['messages' => $messages, 'readAt' => $read ? \Carbon\Carbon::parse($read)->toJSON() : null];
+            return ['messages' => $messages, 'readAt' => $read ? \Carbon\Carbon::parse($read)->toJSON() : null, 'members' => self::members()];
         } catch (\Throwable $e) {
             return ['messages' => [], 'readAt' => null];
+        }
+    }
+
+    /** Everyone in the group: approved volunteers (not the current user) and the admin names used in the chat. */
+    private static function members(): array
+    {
+        try {
+            $meId = auth()->id();
+            $vols = \App\Models\User::role('volunteer')->where('status', 'approved')
+                ->when($meId, fn ($q) => $q->where('id', '!=', $meId))
+                ->orderBy('name')->limit(300)->pluck('name')->all();
+            $admins = DB::table('group_messages')->where('sender_type', 'admin')
+                ->whereNotNull('label')->distinct()->pluck('label')->all();
+
+            $out = [];
+            foreach ($admins as $n) { $out[] = ['name' => $n, 'role' => 'Admin']; }
+            foreach ($vols as $n) { $out[] = ['name' => $n, 'role' => 'Volunteer']; }
+
+            return $out;
+        } catch (\Throwable $e) {
+            return [];
         }
     }
 

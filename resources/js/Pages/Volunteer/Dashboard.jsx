@@ -1,3 +1,6 @@
+import { useEffect as useEffectPreload } from 'react';
+import { useEffect as useEffectAutoRefresh } from 'react';
+import { router as routerAutoRefresh } from '@inertiajs/react';
 import { Link, router } from '@inertiajs/react';
 import React, { useState, useEffect } from 'react';
 import VolunteerShell, { safeRoute, useVolunteerShell, faceStatusLabel } from '../../Components/VolunteerShell';
@@ -5,6 +8,48 @@ import { AttendanceCapture, RingClockButton, RunningTimer } from '../../Componen
 import TimeInSuccessModal from '../../Components/TimeInSuccessModal';
 
 export default function VolunteerDashboard({ auth, totalHours, totalDays, monthDays, attendedCount, missedCount, monthHours, todayHours, lastMonthDone, lastMonthAttended, lastMonthMissed, monthAttended, fieldAttended, branchAttended, longestStreak, currentStreak, monthDone, monthScheduled, recordsTotal, assignedActivities, recentAttendance, todayAttendance }) {
+    // preload face detection in the background so Time In/Out opens fast
+    useEffectPreload(() => {
+        let dead = false;
+        const run = async () => {
+            try {
+                if (!window.faceapi) {
+                    await new Promise((resolve, reject) => {
+                        const s = document.createElement('script');
+                        s.src = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
+                        s.onload = resolve;
+                        s.onerror = reject;
+                        document.body.appendChild(s);
+                    });
+                }
+                if (dead) return;
+                const f = window.faceapi;
+                await Promise.all([
+                    f.nets.tinyFaceDetector.isLoaded ? null : f.nets.tinyFaceDetector.loadFromUri('/models'),
+                    f.nets.faceLandmark68Net.isLoaded ? null : f.nets.faceLandmark68Net.loadFromUri('/models'),
+                    f.nets.faceRecognitionNet.isLoaded ? null : f.nets.faceRecognitionNet.loadFromUri('/models'),
+                ]);
+                if (dead) return;
+                const warm = document.createElement('canvas');
+                warm.width = 150; warm.height = 150;
+                await f.detectSingleFace(warm, new f.TinyFaceDetectorOptions({ inputSize: 288, scoreThreshold: 0.4 })).withFaceLandmarks();
+                await f.nets.faceRecognitionNet.computeFaceDescriptor(warm).catch(() => {});
+                await f.nets.faceLandmark68Net.detectLandmarks(warm).catch(() => {});
+            } catch (e) { console.warn('[scan] preload skipped', e); }
+        };
+        const id = setTimeout(run, 1500);
+        return () => { dead = true; clearTimeout(id); };
+    }, []);
+    // auto-refresh dashboard
+    useEffectAutoRefresh(() => {
+        const tick = () => {
+            if (document.visibilityState !== 'visible' || document.querySelector('video')) return;
+            routerAutoRefresh.reload({ preserveScroll: true });
+        };
+        const id = setInterval(tick, 60000);
+        document.addEventListener('visibilitychange', tick);
+        return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); };
+    }, []);
     const activitiesList = assignedActivities || [];
     const attendance = (recentAttendance || [])
         .filter(rec => new Date(rec.date).toDateString() !== new Date().toDateString() || !!rec.time_out || ['absent', 'cancelled', 'needs_review'].includes(rec.status)).filter(rec => !!rec.hours_rendered || !!rec.time_out || rec.status === 'cancelled' || rec.status === 'absent' || rec.status === 'needs_review')
@@ -343,6 +388,20 @@ function PhoneClockCard({ activities, attendanceFor, onStart }) {
     const leftValue = timedIn
         ? (Number.isFinite(startedAt) ? new Date(startedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true }) : DASH)
         : fmt12(act.start_time);
+    const dNow = new Date();
+    const dNowM = dNow.getHours() * 60 + dNow.getMinutes();
+    const dToday = `${dNow.getFullYear()}-${pad(dNow.getMonth() + 1)}-${pad(dNow.getDate())}`;
+    const dDay = /^\d{4}-\d{2}-\d{2}/.test(String(act?.date || '')) ? String(act.date).slice(0, 10) : '';
+    let phoneBlocked = null;
+    if (!timedIn) {
+        if (dDay && dDay < dToday) phoneBlocked = 'Time in closed';
+        else if (dDay && dDay > dToday) phoneBlocked = 'Not open yet';
+        else if (sMin != null && eMin != null) {
+            if (dNowM > eMin) phoneBlocked = 'Time in closed';
+            else if (dNowM < sMin - 60) { const o = (sMin - 60 + 1440) % 1440; phoneBlocked = `Opens ${fmt12(`${pad(Math.floor(o / 60))}:${pad(o % 60)}`)}`; }
+        }
+    }
+    const phoneUsable = faceReady && !phoneBlocked;
 
     return (
         <>
@@ -375,24 +434,24 @@ function PhoneClockCard({ activities, attendanceFor, onStart }) {
                     <button
                         type="button"
                         aria-label={label}
-                        aria-disabled={!faceReady}
-                        onClick={(e) => { e.stopPropagation(); if (faceReady) onStart(act, timedIn ? 'checkout' : 'checkin'); }}
-                        style={{ position: 'relative', display: 'block', margin: '0 auto', width: '170px', height: '170px', padding: 0, border: 'none', background: 'none', cursor: faceReady ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}
+                        aria-disabled={!phoneUsable}
+                        onClick={(e) => { e.stopPropagation(); if (phoneUsable) onStart(act, timedIn ? 'checkout' : 'checkin'); }}
+                        style={{ position: 'relative', display: 'block', margin: '0 auto', width: '170px', height: '170px', padding: 0, border: 'none', background: 'none', cursor: phoneUsable ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}
                     >
                         <svg width="170" height="170" viewBox="0 0 170 170" aria-hidden="true">
-                            <circle cx="85" cy="85" r="74" fill="none" stroke={faceReady ? '#f7c1c1' : '#e4e4e6'} strokeWidth="7" />
+                            <circle cx="85" cy="85" r="74" fill="none" stroke={phoneUsable ? '#f7c1c1' : '#e4e4e6'} strokeWidth="7" />
                             {progress > 0 && (
                                 <circle cx="85" cy="85" r="74" fill="none" stroke="#CC0000" strokeWidth="7" strokeLinecap="round"
                                     strokeDasharray={`${(Math.min(progress, 1) * 2 * Math.PI * 74).toFixed(1)} ${(2 * Math.PI * 74).toFixed(1)}`} transform="rotate(-90 85 85)" />
                             )}
-                            <circle cx="85" cy="85" r="62" fill={faceReady ? '#CC0000' : '#c9c9cc'} />
+                            <circle cx="85" cy="85" r="62" fill={phoneUsable ? '#CC0000' : '#c9c9cc'} />
                             {progress > 0 && (() => {
                                 const a = Math.min(progress, 1) * 2 * Math.PI - Math.PI / 2;
                                 return <circle data-rc-dot="1" cx={(85 + 74 * Math.cos(a)).toFixed(1)} cy={(85 + 74 * Math.sin(a)).toFixed(1)} r="8" fill="white" stroke="#CC0000" strokeWidth="3" />;
                             })()}
                         </svg>
                         <span style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                            <span style={{ fontSize: timedIn ? '22px' : '20px', fontWeight: '600', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{timedIn ? <RcElapsed since={record.time_in} /> : label}</span>
+                            <span style={{ fontSize: timedIn ? '22px' : (phoneBlocked ? '14px' : '20px'), fontWeight: '600', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{timedIn ? <RcElapsed since={record.time_in} /> : (phoneBlocked || label)}</span>
                             <span style={{ fontSize: '11px', marginTop: '5px', color: faceReady ? '#ffd9d9' : '#f3f3f4' }}>
                                 {faceReady ? (timedIn ? 'Tap to end shift' : 'Tap to start') : 'Not available yet'}
                             </span>
@@ -470,6 +529,29 @@ function TaskAttendanceButton({ act, record, onStart }) {
         fontFamily: 'inherit', whiteSpace: 'nowrap', border: '1px solid #CC0000', cursor: 'pointer',
     };
 
+    const toM = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+    const f12 = (m) => { const h = Math.floor(m / 60) % 24; return `${((h + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
+    const nowD = new Date();
+    const nowM = nowD.getHours() * 60 + nowD.getMinutes();
+    const todayStr = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}-${String(nowD.getDate()).padStart(2, '0')}`;
+    const actDay = /^\d{4}-\d{2}-\d{2}/.test(String(act?.date || '')) ? String(act.date).slice(0, 10) : '';
+    const sM = toM(act?.start_time);
+    const eM = toM(act?.end_time);
+    let blocked = null;
+    if (actDay && actDay < todayStr) blocked = timedIn ? 'Time out closed' : 'Time in closed';
+    else if (actDay && actDay > todayStr) blocked = 'Not open yet';
+    else if (sM != null && eM != null) {
+        if (timedIn) { if (nowM > eM + 15) blocked = 'Time out closed'; }
+        else if (nowM > eM) blocked = 'Time in closed';
+        else if (nowM < sM - 60) blocked = `Opens ${f12((sM - 60 + 1440) % 1440)}`;
+    }
+    if (blocked) {
+        return (
+            <span aria-disabled="true" title={blocked} style={{ ...base, background: '#f5f5f5', color: '#999', border: '1px solid #f0f0f0', cursor: 'not-allowed' }}>
+                {blocked}
+            </span>
+        );
+    }
     if (!faceReady) {
         return (
             <span
@@ -800,8 +882,8 @@ function SetupStatus({ compact = false }) {
     if (isMobile || compact) {
         const doneCount = (profileDone ? 1 : 0) + (faceDone ? 1 : 0);
         if (compact) {
-            const startStyle = { fontSize: '12px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '8px', padding: '9px 18px', textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0, textAlign: 'center', boxSizing: 'border-box', ...(isMobile ? { width: '100%' } : {}) };
-            const badgeStyle = { display: 'inline-block', fontSize: '11px', fontWeight: '700', color: '#CC0000', background: 'white', border: '1px solid #f5c6c6', borderRadius: '10px', padding: '1px 9px', marginBottom: '4px' };
+            const startStyle = { fontSize: '12px', fontWeight: '600', color: 'white', background: '#CC0000', border: 'none', borderRadius: '7px', padding: '8px 18px', textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0, textAlign: 'center', boxSizing: 'border-box', ...(isMobile ? { width: '100%' } : {}) };
+            const badgeStyle = { display: 'inline-block', fontSize: '10px', fontWeight: '700', color: '#CC0000', background: 'white', border: '1px solid #f5c6c6', borderRadius: '10px', padding: '1px 8px', flexShrink: 0 };
             let title;
             let sub;
             let action = null;
@@ -821,11 +903,11 @@ function SetupStatus({ compact = false }) {
                 if (faceNeeded) action = <button type="button" onClick={openFace} style={startStyle}>Start</button>;
             }
             return (
-                <div role="region" aria-label="Finish setting up" style={{ background: '#fff5f5', border: '1px solid #f5c6c6', borderLeft: '4px solid #CC0000', borderRadius: '12px', marginBottom: '12px', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                <div role="region" aria-label="Finish setting up" style={{ background: '#fff5f5', border: '1px solid #f5c6c6', borderRadius: '12px', marginBottom: '12px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
                     <div style={{ minWidth: 0, flex: '1 1 180px' }}>
-                        {badge && <span style={badgeStyle}>{badge}</span>}
-                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#111' }}>{title}</div>
-                        <div style={{ fontSize: '12px', color: '#777', marginTop: '2px' }}>{sub}</div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}><span style={{ fontSize: '13px', fontWeight: '600', color: '#111' }}>{title}</span>{badge && <span style={badgeStyle}>{badge}</span>}</div>
+                        <div style={{ fontSize: '12px', color: '#777', marginTop: '4px', lineHeight: 1.5 }}>{sub}</div>
                     </div>
                     {action}
                 </div>
@@ -944,13 +1026,13 @@ function ReminderPinIcon() {
         </svg>
     );
 }
-function RingGauge({ value, frac, color }) {
+function RingGauge({ value, frac, color, track = '#ececee' }) {
     const r = 21;
     const circ = 2 * Math.PI * r;
     const small = String(value).length > 3;
     return (
         <svg width="54" height="54" viewBox="0 0 54 54" aria-hidden="true" style={{ flexShrink: 0 }}>
-            <circle cx="27" cy="27" r={r} fill="none" stroke="#ececee" strokeWidth="7" />
+            <circle cx="27" cy="27" r={r} fill="none" stroke={track} strokeWidth="7" />
             {frac > 0 && <circle cx="27" cy="27" r={r} fill="none" stroke={color} strokeWidth="7" strokeDasharray={`${circ * frac} ${circ}`} transform="rotate(-90 27 27)" />}
             <text x="27" y={small ? 30 : 31} textAnchor="middle" fontSize={small ? 11 : 13} fontWeight="600" fill="#111">{value}</text>
         </svg>
@@ -1008,7 +1090,7 @@ function RingCards({ compact, totalHours, attendedCount, missedCount, monthHours
     const brn = Number(branchAttended) || 0;
     const typeTotal = fld + brn;
     const fieldPct = typeTotal > 0 ? Math.round((fld / typeTotal) * 100) : 0;
-    const streakNote = best === 0 ? 'Complete an activity to start' : (cur >= best ? 'Personal best' : `${best - cur} more to beat it`);
+    const streakNote = best === 0 ? 'Complete an activity to start' : (cur >= best ? `Matches your best (${best})` : `Best is ${best}, ${best - cur} more to beat it`);
 
     return (
         <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', overflowX: compact ? 'auto' : 'visible', paddingBottom: compact ? '6px' : 0 }}>
@@ -1027,15 +1109,15 @@ function RingCards({ compact, totalHours, attendedCount, missedCount, monthHours
             <div style={card}>
                 <Link href={safeRoute('volunteer.records')} aria-label="Open activity types in records" style={{ position: 'absolute', inset: 0, borderRadius: '10px', color: '#9a9aa2', textDecoration: 'none' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ position: 'absolute', top: '8px', right: '8px' }}><line x1="7" y1="17" x2="17" y2="7" /><polyline points="8 7 17 7 17 16" /></svg></Link>
                 <div style={row}>
-                    <RingGauge value={typeTotal === 0 ? '\u2013' : `${fieldPct}%`} frac={typeTotal === 0 ? 0 : fieldPct / 100} color="#CC0000" />
+                    <RingGauge value={typeTotal === 0 ? '\u2013' : typeTotal} frac={typeTotal === 0 ? 0 : fieldPct / 100} color="#CC0000" track="#d4d4d8" />
                     <div>
                         <div style={title}>Activity types</div>
                         <div style={{ fontSize: '10px', color: '#9a9aa2', marginBottom: '2px' }}>Since joining</div>
-                        <div style={line}>{dot('#CC0000')}{fld} Field</div>
-                        <div style={line}>{dot('#d4d4d8')}{brn} Branch</div>
+                        <div style={line}>{dot('#CC0000')}{fld} Field{typeTotal > 0 ? ` (${fieldPct}%)` : ''}</div>
+                        <div style={line}>{dot('#d4d4d8')}{brn} Branch{typeTotal > 0 ? ` (${100 - fieldPct}%)` : ''}</div>
                     </div>
                 </div>
-                {typeTotal === 0 ? <RingPill kind="gray">No activities yet</RingPill> : (fld === brn ? <RingPill kind="gray">Balanced</RingPill> : <RingPill kind="ok"><Arrow />{fld > brn ? 'Mostly Field' : 'Mostly Branch'}</RingPill>)}
+                {typeTotal === 0 ? <RingPill kind="gray">No activities yet</RingPill> : (fld === brn ? <RingPill kind="gray">Balanced</RingPill> : <RingPill kind="ok"><Arrow />{brn === 0 ? 'All Field' : fld === 0 ? 'All Branch' : fld > brn ? 'Mostly Field' : 'Mostly Branch'}</RingPill>)}
             </div>
             <div style={card}><Link href={safeRoute('volunteer.records')} aria-label="Open attendance in records" style={{ position: 'absolute', inset: 0, borderRadius: '10px', color: '#9a9aa2', textDecoration: 'none' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ position: 'absolute', top: '8px', right: '8px' }}><line x1="7" y1="17" x2="17" y2="7" /><polyline points="8 7 17 7 17 16" /></svg></Link>
                 <div style={row}>

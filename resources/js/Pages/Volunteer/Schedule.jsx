@@ -1,3 +1,5 @@
+import { useEffect as useEffectAutoRefresh } from 'react';
+import { router as routerAutoRefresh } from '@inertiajs/react';
 import { Link, router } from '@inertiajs/react';
 import { useMemo, useState, useRef, useEffect } from 'react';
 import VolunteerShell, { useVolunteerShell } from '../../Components/VolunteerShell';
@@ -44,7 +46,7 @@ function getBucket(act) {
     const status = (act.status || 'assigned').toLowerCase();
     if (status === 'completed') return 'completed';
     if (status === 'cancelled') return 'cancelled';
-    if (status === 'ongoing') return 'ongoing';
+    if (status === 'ongoing' || (status === 'assigned' && act.phase === 'ongoing')) return 'ongoing';
     if (status === 'missed') return 'missed';
     return isActivityDue(act.date) ? 'assigned' : 'upcoming';
 }
@@ -95,6 +97,15 @@ export default function VolunteerSchedule({ auth, activities }) {
     const [filterOpen, setFilterOpen] = useState(false);
     const [dateFilter, setDateFilter] = useState('any'); // any | today | week | month
     const [assignedBy, setAssignedBy] = useState('any');
+    // auto-refresh schedule
+    useEffectAutoRefresh(() => {
+        const tick = () => {
+            if (document.visibilityState === 'visible') routerAutoRefresh.reload({ only: ['activities', 'attendance', 'fieldActivities', 'branchActivities'], preserveScroll: true });
+        };
+        const id = setInterval(tick, 60000);
+        document.addEventListener('visibilitychange', tick);
+        return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); };
+    }, []);
     const [dayFilter, setDayFilter] = useState(null); // 'YYYY-MM-DD' picked in the week card
     const [weekOffset, setWeekOffset] = useState(0);
 
@@ -677,6 +688,29 @@ function QuickAttendanceButton({ act, onStart }) {
         return null;
     }
 
+    const toM = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+    const f12 = (m) => { const h = Math.floor(m / 60) % 24; return `${((h + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
+    const nowD = new Date();
+    const nowM = nowD.getHours() * 60 + nowD.getMinutes();
+    const todayStr = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}-${String(nowD.getDate()).padStart(2, '0')}`;
+    const actDay = /^\d{4}-\d{2}-\d{2}/.test(String(act?.date || '')) ? String(act.date).slice(0, 10) : '';
+    const sM = toM(act?.start_time);
+    const eM = toM(act?.end_time);
+    let blocked = null;
+    if (actDay && actDay < todayStr) blocked = timedIn ? 'Time out closed' : 'Time in closed';
+    else if (actDay && actDay > todayStr) blocked = 'Not open yet';
+    else if (sM != null && eM != null) {
+        if (timedIn) { if (nowM > eM + 15) blocked = 'Time out closed'; }
+        else if (nowM > eM) blocked = 'Time in closed';
+        else if (nowM < sM - 60) blocked = `Opens ${f12((sM - 60 + 1440) % 1440)}`;
+    }
+    if (blocked) {
+        return (
+            <span aria-disabled="true" title={blocked} style={{ ...base, background: '#f5f5f5', color: '#999', border: '1px solid #f0f0f0', cursor: 'not-allowed' }}>
+                {blocked}
+            </span>
+        );
+    }
     if (!faceReady) {
         return (
             <span

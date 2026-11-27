@@ -322,8 +322,8 @@ function RecordsColsPopover({ cols, setCols, toggleCol, onClose }) {
                                     padding: '0 14px', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit',
                                     border: 'none',
                                     borderRadius: '0 8px 8px 0', cursor: 'pointer',
-                                    background: panelOpen || panelCount > 0 ? '#fef2f2' : 'transparent',
-                                    color: panelOpen || panelCount > 0 ? '#CC0000' : '#555',
+                                    background: panelOpen ? '#f5f5f5' : 'transparent',
+                                    color: '#555',
                                 }}
                             >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -332,7 +332,7 @@ function RecordsColsPopover({ cols, setCols, toggleCol, onClose }) {
                                 {panelCount > 0 && (
                                     <span style={{
                                         minWidth: '16px', height: '16px', borderRadius: '8px', padding: '0 4px',
-                                        background: 'white', color: '#CC0000', fontSize: '10px', fontWeight: '700',
+                                        background: '#CC0000', color: 'white', fontSize: '10px', fontWeight: '700',
                                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box',
                                     }}>{panelCount}</span>
                                 )}
@@ -429,21 +429,21 @@ function RecordsColsPopover({ cols, setCols, toggleCol, onClose }) {
                                 <span key={c.key} style={{
                                     display: 'inline-flex', alignItems: 'center', gap: '4px',
                                     padding: '4px 6px 4px 10px', fontSize: '11px', fontWeight: '600',
-                                    color: '#CC0000', background: '#fdeaea', borderRadius: '999px',
+                                    color: '#333', background: 'white', border: '1px solid #e3e3e3', borderRadius: '999px', maxWidth: '260px',
                                 }}>
-                                    {c.label}
+                                    <span title={c.label} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
                                     <button
                                         type="button"
                                         onClick={c.remove}
                                         aria-label={`Remove ${c.label} filter`}
-                                        style={{ border: 'none', background: 'transparent', color: '#CC0000', cursor: 'pointer', padding: '0 4px', fontSize: '14px', lineHeight: 1, fontFamily: 'inherit' }}
+                                        style={{ border: 'none', background: 'transparent', color: '#999', cursor: 'pointer', padding: '0 4px', fontSize: '14px', lineHeight: 1, fontFamily: 'inherit' }}
                                     >&times;</button>
                                 </span>
                             ))}
                             <button
                                 type="button"
                                 onClick={clearAll}
-                                style={{ border: 'none', background: 'transparent', color: '#888', fontSize: '11px', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer', padding: '4px 6px' }}
+                                style={{ border: 'none', background: 'transparent', color: '#CC0000', fontSize: '11px', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer', padding: '4px 6px' }}
                             >
                                 Clear all
                             </button>

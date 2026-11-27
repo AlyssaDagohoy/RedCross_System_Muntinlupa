@@ -75,79 +75,95 @@ export default function DTR({ activities = [], submissions = [], reasons = {}, d
     return (
         <VolunteerShell active="dtr" title="DTR">
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '20px', alignItems: 'start', padding: '4px 0' }}>
-                <form data-dtr-compact="1" onSubmit={submit} style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '12px', padding: '16px' }}>
-                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#111' }}>File a Daily Time Record</div>
-                    <div style={{ fontSize: '12px', color: '#777', margin: '3px 0 10px' }}>
+                <form data-dtr-compact="1" data-dtr-v2="1" className="dtr2" onSubmit={submit} style={{ background: 'white', border: '1px solid #ebebeb', borderRadius: '10px', padding: '24px 26px' }}>
+                    <style>{`
+                        .dtr2 *, .dtr2 { box-sizing: border-box; font-family: inherit; }
+                        .dtr2 .lb { display: block; font-size: 11px; font-weight: 600; color: #777; margin-bottom: 6px; }
+                        .dtr2 .f { width: 100%; height: 38px; border: 1.5px solid #e0e0e0; border-radius: 8px; font-size: 12px; color: #666; background-color: #fff; padding: 0 12px; outline: none; }
+                        .dtr2 .f::placeholder { color: #999; opacity: 1; }
+                        .dtr2 .f.ro { background-color: #f9f9f9; }
+                        .dtr2 input[type=time]::-webkit-calendar-picker-indicator { opacity: .45; }
+                        .dtr2 textarea.f { height: 72px; padding: 10px 12px; resize: none; display: block; }
+                        .dtr2 select.f { appearance: none; -webkit-appearance: none; padding-right: 32px; background-repeat: no-repeat; background-position: right 12px center; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>"); }
+                        .dtr2 .g { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+                    `}</style>
+                    <div style={{ fontSize: '16px', fontWeight: '700', color: '#111' }}>File a Daily Time Record</div>
+                    <div style={{ fontSize: '12px', color: '#777', margin: '4px 0 16px', lineHeight: 1.5 }}>
                         For any reason you cannot attend or scan: no signal, sickness, emergency and more. Once approved, you will be marked Excused instead of Absent.
                     </div>
 
-                    {flash?.success && <div style={{ background: '#e8f7ee', color: '#16a34a', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>{flash.success}</div>}
-                    {flash?.error && <div style={{ background: '#fdecec', color: '#CC0000', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>{flash.error}</div>}
+                    {flash?.success && <div style={{ background: '#e8f7ee', color: '#16a34a', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>{flash.success}</div>}
+                    {flash?.error && <div style={{ background: '#fdecec', color: '#CC0000', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', marginBottom: '12px' }}>{flash.error}</div>}
 
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
                         {typeBtn('before', 'File before I leave')}
                         {typeBtn('after', 'File after I return')}
                     </div>
                     {err('filing_type')}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <div className="g">
                         <div>
-                            <label style={label}>Activity</label>
-                            <select style={cf} value={d.activity_id} onChange={(e) => form.setData('activity_id', e.target.value)}>
+                            <label className="lb">Activity</label>
+                            <select className="f" value={d.activity_id} onChange={(e) => form.setData('activity_id', e.target.value)}>
                                 <option value="">{options.length ? 'Select an activity' : 'No activities available for this option'}</option>
                                 {options.map((a) => <option key={a.id} value={a.id}>{a.name} - {niceDate(a.date)}</option>)}
                             </select>
                             {err('activity_id')}
                         </div>
                         <div>
-                            <label style={label}>Date</label>
-                            <input style={{ ...cf, background: '#f9f9f9' }} value={chosen ? niceDate(chosen.date) : ''} placeholder="Pick an activity" readOnly />
+                            <label className="lb">Date</label>
+                            <input className="f ro" value={chosen ? niceDate(chosen.date) : ''} placeholder="Pick an activity" readOnly />
                         </div>
+                    </div>
+
+                    <div className="g">
                         <div>
-                            <label style={label}>Time in</label>
-                            <input type="time" style={cf} value={d.time_in} onChange={(e) => form.setData('time_in', e.target.value)} />
+                            <label className="lb">Time in</label>
+                            <input className="f" type="time" value={d.time_in} onChange={(e) => form.setData('time_in', e.target.value)} />
                             {err('time_in')}
                         </div>
                         <div>
-                            <label style={label}>Time out</label>
-                            <input type="time" style={cf} value={d.time_out} onChange={(e) => form.setData('time_out', e.target.value)} />
+                            <label className="lb">Time out</label>
+                            <input className="f" type="time" value={d.time_out} onChange={(e) => form.setData('time_out', e.target.value)} />
                             {err('time_out')}
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <div className="g">
                         <div>
-                            <label style={label}>{d.filing_type === 'before' ? 'Where I will be' : 'Where I was'}</label>
-                            <textarea rows={2} style={{ ...field, height: '64px', padding: '8px 12px', resize: 'none' }}
-                                value={d.location} onChange={(e) => form.setData('location', e.target.value)} />
+                            <label className="lb">{d.filing_type === 'before' ? 'Where I will be' : 'Where I was'}</label>
+                            <textarea className="f" rows={2} value={d.location} onChange={(e) => form.setData('location', e.target.value)} />
                             {err('location')}
                         </div>
                         <div>
-                            <label style={label}>Reason</label>
-                            <textarea rows={2} style={{ ...field, height: '64px', padding: '8px 12px', resize: 'none' }}
-                                value={d.details} onChange={(e) => form.setData('details', e.target.value)} />
+                            <label className="lb">Reason</label>
+                            <textarea className="f" rows={2} value={d.details} onChange={(e) => form.setData('details', e.target.value)} />
                             {err('details')}
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <div className="g">
                         <div>
-                            <label style={label}>Proof <span style={{ color: '#CC0000' }}>(required)</span></label>
+                            <label className="lb">Proof <span style={{ color: '#CC0000' }}>(required)</span></label>
                             <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf"
                                 onChange={(e) => form.setData('proof', e.target.files[0] || null)}
-                                style={{ ...cf, paddingTop: '6px', fontSize: '12px', background: d.proof ? '#f2faf5' : 'white' }} />
+                                style={{ display: 'none' }} />
+                            <div className="f" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 6px' }}>
+                                <button type="button" onClick={() => fileRef.current && fileRef.current.click()} style={{ background: 'white', color: '#555', border: '1px solid #e0e0e0', borderRadius: '6px', padding: '0 12px', height: '26px', fontSize: '12px', fontWeight: '500', fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>Choose file</button>
+                                <span style={{ fontSize: '12px', color: d.proof ? '#444' : '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.proof ? d.proof.name : 'No file chosen'}</span>
+                            </div>
                             {err('proof')}
                         </div>
                         <div>
-                            <label style={label}>Witness / team leader (optional)</label>
-                            <input style={cf} value={d.witness} onChange={(e) => form.setData('witness', e.target.value)} />
+                            <label className="lb">Witness / team leader (optional)</label>
+                            <input className="f" value={d.witness} onChange={(e) => form.setData('witness', e.target.value)} />
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f0f0f0', paddingTop: '10px', gap: '12px' }}>
-                        <span style={{ fontSize: '11px', color: '#888' }}>Proof is required: a selfie, medical certificate or any supporting document. Must be filed within {deadlineDays} days after the activity.</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f0f0f0', paddingTop: '16px', marginTop: '4px', gap: '16px' }}>
+                        <span style={{ fontSize: '11px', color: '#888', lineHeight: 1.5 }}>Proof is required: a selfie, medical certificate or any supporting document. Must be filed within {deadlineDays} days after the activity.</span>
                         <button type="submit" disabled={form.processing || !d.proof} style={{
-                            height: '34px', padding: '0 18px', border: 'none', borderRadius: '8px', background: '#CC0000', color: 'white',
+                            height: '38px', padding: '0 22px', border: 'none', borderRadius: '8px', background: '#CC0000', color: 'white',
                             fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', whiteSpace: 'nowrap',
                             cursor: form.processing || !d.proof ? 'not-allowed' : 'pointer', opacity: form.processing || !d.proof ? 0.55 : 1,
                         }}>{form.processing ? 'Submitting...' : 'Submit DTR'}</button>

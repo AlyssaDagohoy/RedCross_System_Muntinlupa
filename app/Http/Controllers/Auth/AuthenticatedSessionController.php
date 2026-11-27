@@ -139,6 +139,6 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        Inertia::clearHistory(); return redirect()->route('login');
     }
 }

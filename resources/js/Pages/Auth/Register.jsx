@@ -1,16 +1,22 @@
 import { Head, Link, useForm } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function Register() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
 
+    const prefill = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+
     const { data, setData, post, processing, errors } = useForm({
-        name: '',
-        email: '',
+        name: prefill.get('name') || '',
+        email: prefill.get('email') || '',
         password: '',
         password_confirmation: '',
     });
+
+    useEffect(() => {
+        if (window.location.search) window.history.replaceState(window.history.state, '', window.location.pathname);
+    }, []);
 
     const submit = (e) => {
         e.preventDefault();
@@ -126,11 +132,15 @@ export default function Register() {
                     width: 100%; padding: 7px 12px;
                     border-radius: 10px; font-size: 12px;
                     outline: none; color: #111;
-                    background: #fff3f3; box-sizing: border-box;
+                    background: #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.12); box-sizing: border-box;
                     font-family: 'Source Sans 3', sans-serif;
                     transition: border 0.15s;
                 }
-                .reg-input:focus { border-color: #DC2626 !important; box-shadow: 0 0 0 3px rgba(220,38,38,0.08); }
+                .reg-input:focus { box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
+                .reg-input:-webkit-autofill, .reg-input:-webkit-autofill:hover, .reg-input:-webkit-autofill:focus {
+                    -webkit-text-fill-color: #111;
+                    transition: background-color 600000s 0s, color 600000s 0s;
+                }
 
                 /* Hide native browser password reveal/clear icons (Edge/IE) so they don't double up with our custom eye toggle */
                 input[type="password"]::-ms-reveal,
@@ -172,7 +182,7 @@ export default function Register() {
                 .field-icon {
                     position: absolute; left: 12px; top: 50%;
                     transform: translateY(-50%);
-                    color: #c9a3a3; display: flex; pointer-events: none;
+                    color: #9ca3af; display: flex; pointer-events: none;
                 }
                 .reg-input.with-icon { padding-left: 36px; }
 
@@ -282,9 +292,10 @@ export default function Register() {
                                         value={data.name}
                                         onChange={e => setData('name', e.target.value)}
                                         placeholder="Enter your full name"
+                                        autoComplete="off"
                                         required
                                         className="reg-input with-icon"
-                                        style={{ border: errors.name ? '1px solid #DC2626' : '1px solid #ffe2e2' }}
+                                        style={{ border: errors.name ? '1px solid #DC2626' : '1px solid transparent' }}
                                     />
                                 </div>
                                 {errors.name && <p style={errorStyle}>{errors.name}</p>}
@@ -300,9 +311,12 @@ export default function Register() {
                                         value={data.email}
                                         onChange={e => setData('email', e.target.value)}
                                         placeholder="Enter your email"
+                                        autoComplete="off"
+                                        readOnly
+                                        onFocus={(e) => e.target.removeAttribute('readonly')}
                                         required
                                         className="reg-input with-icon"
-                                        style={{ border: errors.email ? '1px solid #DC2626' : '1px solid #ffe2e2' }}
+                                        style={{ border: errors.email ? '1px solid #DC2626' : '1px solid transparent' }}
                                     />
                                 </div>
                                 {errors.email && <p style={errorStyle}>{errors.email}</p>}
@@ -318,10 +332,11 @@ export default function Register() {
                                             value={data.password}
                                             onChange={e => setData('password', e.target.value)}
                                             placeholder="Create password"
+                                            autoComplete="new-password"
                                             required
                                             className="reg-input"
                                             style={{
-                                                border: errors.password ? '1px solid #DC2626' : '1px solid #ffe2e2',
+                                                border: errors.password ? '1px solid #DC2626' : '1px solid transparent',
                                                 paddingRight: '34px',
                                             }}
                                         />
@@ -346,10 +361,11 @@ export default function Register() {
                                             value={data.password_confirmation}
                                             onChange={e => setData('password_confirmation', e.target.value)}
                                             placeholder="Repeat password"
+                                            autoComplete="new-password"
                                             required
                                             className="reg-input"
                                             style={{
-                                                border: errors.password_confirmation ? '1px solid #DC2626' : '1px solid #ffe2e2',
+                                                border: errors.password_confirmation ? '1px solid #DC2626' : '1px solid transparent',
                                                 paddingRight: '34px',
                                             }}
                                         />
@@ -393,7 +409,7 @@ export default function Register() {
                                 type="button"
                                 className="google-btn"
                                 style={{ marginBottom: '10px' }}
-                                onClick={() => { /* TODO: window.location.href = route('auth.google') */ }}
+                                onClick={() => { window.location.href = route('auth.google', { from: 'register' }); }}
                             >
                                 <svg width="14" height="14" viewBox="0 0 48 48">
                                     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />

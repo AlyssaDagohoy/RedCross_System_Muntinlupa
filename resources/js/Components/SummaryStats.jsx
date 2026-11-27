@@ -1,4 +1,3 @@
-// ring
 import { recordStatusKey } from './StatusDonut';
 
 const toMs = (a, v) => {
@@ -20,7 +19,7 @@ function hoursOf(a) {
     return h > 24 ? 0 : h;
 }
 
-function Ring({ pct, text }) {
+function Ring({ pct, text, color = '#1D9E75' }) {
     const R = 18;
     const C = 2 * Math.PI * R;
     const len = pct > 0 ? (Math.min(pct, 100) / 100) * C : 0;
@@ -28,7 +27,7 @@ function Ring({ pct, text }) {
         <svg viewBox="0 0 44 44" width="46" height="46" style={{ flexShrink: 0 }} aria-hidden="true">
             <g transform="rotate(-90 22 22)" fill="none" strokeWidth="5">
                 <circle cx="22" cy="22" r={R} stroke="#f0f0f0" />
-                {len > 0 && <circle cx="22" cy="22" r={R} stroke="#1D9E75" strokeLinecap="round" strokeDasharray={len + ' ' + (C - len)} />}
+                {len > 0 && <circle cx="22" cy="22" r={R} stroke={color} strokeLinecap="round" strokeDasharray={len + ' ' + (C - len)} />}
             </g>
             <text x="22" y="26" textAnchor="middle" style={{ fill: '#111', fontSize: '11px', fontWeight: 700 }}>{text}</text>
         </svg>
@@ -47,36 +46,45 @@ function Row({ dot, children }) {
 export default function SummaryStats({ records }) {
     const list = Array.isArray(records) ? records : [];
     let present = 0;
-    let absent = 0;
     let hours = 0;
+    let total = 0;
+    let first = null;
+
     list.forEach((a) => {
         const k = recordStatusKey(a);
-        if (k === 'present') { present += 1; hours += hoursOf(a); }
-        else if (k === 'absent') absent += 1;
+        if (k !== 'cancelled') {
+            total += 1;
+            const t = new Date(String(a.date || '').slice(0, 10) + 'T00:00:00').getTime();
+            if (!isNaN(t) && (first === null || t < first)) first = t;
+        }
+        if (k === 'present') {
+            present += 1;
+            hours += hoursOf(a);
+        }
     });
-    const counted = present + absent;
-    const rate = counted > 0 ? Math.round((present / counted) * 100) : 0;
+
     const hrs = Math.round(hours * 10) / 10;
+    const firstLabel = first === null ? '\u2014' : new Date(first).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
     const box = { background: 'white', borderRadius: '12px', border: '1px solid #ebebeb', padding: '10px 14px', minWidth: 0, display: 'flex', alignItems: 'center', gap: '12px' };
     const title = { fontSize: '12.5px', fontWeight: 600, color: '#111', marginBottom: '2px' };
 
     return (
-        <div style={{ flex: '1 1 240px', display: 'grid', gridAutoRows: '1fr', gap: '8px', minWidth: 0 }}>
+        <div className="ss-grid" style={{ flex: '1 1 260px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gridAutoRows: '1fr', gap: '8px', minWidth: 0 }}>
             <div style={box}>
                 <Ring pct={0} text={hrs + 'h'} />
                 <div style={{ minWidth: 0 }}>
                     <div style={title}>Total hours</div>
                     <Row dot="#1D9E75">{hrs} hrs served</Row>
-                    <Row dot="#c4c4c4">{present} activities attended</Row>
+                    <Row dot="#c4c4c4">{present} attended</Row>
                 </div>
             </div>
             <div style={box}>
-                <Ring pct={rate} text={rate + '%'} />
+                <Ring pct={total > 0 ? 100 : 0} text={String(total)} color="#B92F2F" />
                 <div style={{ minWidth: 0 }}>
-                    <div style={title}>Attendance rate</div>
-                    <Row dot="#1D9E75">{present} present</Row>
-                    <Row dot="#E24B4A">{absent} absent</Row>
+                    <div style={title}>Total activities</div>
+                    <Row dot="#B92F2F">{total} since joining</Row>
+                    <Row dot="#c4c4c4">First: {firstLabel}</Row>
                 </div>
             </div>
         </div>

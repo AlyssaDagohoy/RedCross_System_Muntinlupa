@@ -17,7 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
             \App\Http\Middleware\ForcePasswordChange::class,
             \App\Http\Middleware\AdminSessionProfile::class,
-            \App\Http\Middleware\RequireAdminProfile::class,
+            \App\Http\Middleware\RequireAdminProfile::class, \Inertia\Middleware\EncryptHistory::class, \App\Http\Middleware\NoStoreForAuthenticated::class,
         ]);
 
         $middleware->alias([

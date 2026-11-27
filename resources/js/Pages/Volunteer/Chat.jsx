@@ -362,7 +362,7 @@ export default function VolunteerChat({ auth, sentEmails, announcements, staff, 
     const atts = sel ? [...sel.msgs].filter((m) => m.attachment_path && m.id != null).reverse() : [];
     const sharedImgs = atts.filter((m) => (m.attachment_mime || '').startsWith('image/'));
     const sharedFiles = atts.filter((m) => !(m.attachment_mime || '').startsWith('image/'));
-    const people = sel && !sel.key ? (() => { const seen = {}; sel.msgs.forEach((m) => { if (gcMine(m)) return; const n = m.label || m.admin_label || m.admin?.name || 'Red Cross Admin'; if (!seen[n]) seen[n] = m.sender_type === 'admin' ? 'Admin' : 'Volunteer'; }); return Object.entries(seen); })() : [];
+    const people = sel && !sel.key ? (() => { const seen = {}; (groupChat?.members || []).forEach((p) => { if (p && p.name && !seen[p.name]) seen[p.name] = p.role; }); sel.msgs.forEach((m) => { if (gcMine(m)) return; const n = m.label || m.admin_label || m.admin?.name || 'Red Cross Admin'; if (!seen[n]) seen[n] = m.sender_type === 'admin' ? 'Admin' : 'Volunteer'; }); return Object.entries(seen); })() : [];
     const showInfo = info && !!sel;
     const newAnn = (announcements || []).filter((a) => Date.now() - new Date(a.created_at).getTime() < 7 * 86400000).length;
     const unreadChats = chats.filter((c) => inInbox(c) && c.unread);
@@ -521,7 +521,7 @@ const send = (vf0) => { const vf = vf0 instanceof File ? vf0 : null;
                                     {(announcements || []).map((a) => (
                                         <button key={a.id} type="button" onClick={() => setOpenAnn(a.id)} className={'ch-row' + (openAnn === a.id ? ' on' : '')}>
                                             <div className="ch-ann-ic"><Ic n="speaker" s={16} /></div>
-                                            <div className="ch-rt"><div className="ch-rn">{a.title}</div><div className="ch-rp">{(a.body || '').slice(0, 60)}</div></div>
+                                            <div className="ch-rt"><div className="ch-rn">{a.title}{(Date.now() - new Date(a.created_at).getTime() < 7 * 86400000) && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#CC0000', display: 'inline-block', marginLeft: '6px' }} />}</div><div className="ch-rp">{(a.body || '').slice(0, 60)}</div></div>
                                             <div className="ch-rm"><span>{fmtDay(a.created_at)}</span></div>
                                         </button>
                                     ))}
@@ -546,9 +546,9 @@ const send = (vf0) => { const vf = vf0 instanceof File ? vf0 : null;
                                     <div className="ch-head">
                                         <button type="button" className="ch-ib ch-back" aria-label="Back" onClick={() => setOpenAnn(null)}><Ic n="back" s={18} /></button>
                                         <div className="ch-ann-ic"><Ic n="speaker" s={16} /></div>
-                                        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: '14px', fontWeight: 600 }}>{a.title}</div><div style={{ fontSize: '12px', color: '#777' }}>{fmtDay(a.created_at)}</div></div>
+                                        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: '15px', fontWeight: 600 }}>{a.title}</div><div style={{ fontSize: '12px', color: '#777' }}>Posted by {a.admin?.name || 'Red Cross Admin'}{' \u00b7 '}{fmtDay(a.created_at)}, {new Date(a.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div></div><span style={{ fontSize: '12px', background: '#fbeaea', color: '#8c1d1d', borderRadius: '8px', padding: '3px 10px', flexShrink: 0 }}>Announcement</span>
                                     </div>
-                                    <div className="ch-scroll"><div style={{ whiteSpace: 'pre-wrap', fontSize: '13.5px', color: '#333', lineHeight: 1.6 }}>{a.body}</div></div>
+                                    <div className="ch-scroll"><div style={{ whiteSpace: 'pre-wrap', fontSize: '14px', color: '#333', lineHeight: 1.7, maxWidth: '560px' }}>{a.body}</div></div><div style={{ padding: '10px 22px', borderTop: '1px solid #ebebeb', fontSize: '12px', color: '#999' }}>Read-only. Replies go through Messages.</div>
                                 </>
                             )}
                         </div>); })()) : (

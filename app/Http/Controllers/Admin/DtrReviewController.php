@@ -45,7 +45,10 @@ class DtrReviewController extends Controller
                 'reviewed_by'  => auth()->id(),
                 'reviewed_at'  => now(),
             ]);
-            $dtr->user?->notify(new DtrDecided($actName, 'rejected', $remark));
+            Attendance::where('user_id', $dtr->user_id)->where('activity_id', $dtr->activity_id)
+                ->where('status', 'needs_review')->where('attendance_method', 'dtr')
+                ->update(['status' => 'absent', 'attendance_method' => null]);
+$dtr->user?->notify(new DtrDecided($actName, 'rejected', $remark));
 
             return back()->with('message', 'DTR rejected.');
         }
@@ -54,7 +57,7 @@ class DtrReviewController extends Controller
 
         $fields = [
             'date'              => $date,
-            'attendance_method' => 'manual',
+            'attendance_method' => 'dtr',
             'review_reason'     => 'DTR (' . (DtrSubmission::REASONS[$dtr->reason_type] ?? $dtr->reason_type) . '): ' . $dtr->details,
             'admin_remark'      => $remark,
             'reviewed_by'       => auth()->id(),
@@ -99,7 +102,22 @@ class DtrReviewController extends Controller
             ]);
         });
 
-        $dtr->user?->notify(new DtrDecided($actName, $data['decision'], $remark));
+        if ($dtr->user_id) {
+            $label = match ($data['decision']) {
+                'excused' => 'approved. You are marked Excused.',
+                'present' => 'approved. Your hours were recorded.',
+                default   => 'rejected.',
+            };
+
+            \App\Models\Notification::create([
+                'user_id'      => $dtr->user_id,
+                'category'     => 'system',
+                'title'        => 'DTR ' . ($data['decision'] === 'rejected' ? 'rejected' : 'approved'),
+                'message'      => "Your DTR for {$actName} was {$label}" . ($remark ? " Remark: {$remark}" : ''),
+                'action_label' => 'View DTR',
+                'action_url'   => route('volunteer.dtr'),
+            ]);
+        }
 
         return back()->with('message', 'DTR approved.');
     }

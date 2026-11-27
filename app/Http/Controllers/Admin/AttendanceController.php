@@ -31,6 +31,7 @@ class AttendanceController extends Controller
         Attendance::closeMissingTimeOuts();
         $attendanceReviews = Attendance::with(['user', 'activity'])
             ->where('status', 'needs_review')
+            ->where(fn ($q) => $q->whereNull('attendance_method')->orWhere('attendance_method', '!=', 'dtr'))
             ->orderBy('date', 'desc')
             ->get();
 
@@ -124,11 +125,17 @@ class AttendanceController extends Controller
                 if (str_contains($m, 'finger')) {
                     return 'Fingerprint';
                 }
+                if ($m === 'dtr') {
+                    return 'DTR';
+                }
+                if ($m === 'manual') {
+                    return 'Admin review';
+                }
                 if (str_contains($m, 'fallback')) {
-                    return 'Face + email code';
+                    return 'Fallback';
                 }
                 if (str_contains($m, 'face') || str_contains($m, 'facial')) {
-                    return 'Facial recognition';
+                    return 'Face recognition';
                 }
                 return '-';
             case 'hours':

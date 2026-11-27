@@ -53,7 +53,7 @@ export default function AdminShell({ active, title, children }) {
         return () => { document.body.style.overflow = prev; };
     }, [navOpen]);
 
-    const handleLogout = () => router.post(route('logout'));
+    const handleLogout = () => router.post(route('logout'), {}, { replace: true });
 
     const items = [
         { key: 'dashboard',       label: 'Dashboard',     href: route('admin.dashboard'),             icon: <DashIcon /> },

@@ -352,12 +352,12 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
     const poseFrames = useRef(0);
     const blinkState = useRef({ base: 0, closed: false });
 
-    const [modelsReady, setModelsReady] = useState(!!window.faceapi?.nets?.tinyFaceDetector?.isLoaded);
+    const [modelsReady, setModelsReady] = useState(!!window.faceapi?.nets?.tinyFaceDetector?.isLoaded); const [camOn, setCamOn] = useState(false);
     const [challengeReady, setChallengeReady] = useState(false);
     const [ringProgress, setRingProgress] = useState(0);
     const [ringColor, setRingColor] = useState('#e5e5e5');
     const [statusText, setStatusText] = useState('Position your face in the oval');
-    const [error, setError] = useState('');
+    const [error, setError] = useState(''); const [poseFail, setPoseFail] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
     const [earlyConfirm, setEarlyConfirm] = useState('');
@@ -397,7 +397,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
     const resetScan = useCallback(() => {
         setSubmitting(false);
         setRingProgress(0);
-        setRingColor('#DC2626');
+        setRingColor('#16a34a');
         loadChallenge();
     }, [loadChallenge]);
 
@@ -468,7 +468,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
 
     useEffect(() => {
         (async () => {
-            if (!window.faceapi) {
+            window.__scanBoot = performance.now(); window.__scanFirstDet = 0; window.__sl = (m) => console.log('[scan] +' + Math.round(performance.now() - window.__scanBoot) + 'ms ' + m); if (!window.faceapi) {
                 await new Promise((resolve, reject) => {
                     const s = document.createElement('script');
                     s.src = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -477,23 +477,22 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                     document.body.appendChild(s);
                 });
             }
-            const MODEL_URL = '/models';
+            window.__sl('library ready'); const MODEL_URL = '/models';
             await Promise.all([
-                window.faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                window.faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-                window.faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+                window.faceapi.nets.tinyFaceDetector.isLoaded ? null : window.faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                window.faceapi.nets.faceLandmark68Net.isLoaded ? null : window.faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                window.faceapi.nets.faceRecognitionNet.isLoaded ? null : window.faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
             ]);
-            setModelsReady(true); (async () => { try { const t0 = performance.now(); const warm = document.createElement('canvas'); warm.width = 150; warm.height = 150; await window.faceapi.detectSingleFace(warm, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 288, scoreThreshold: 0.4 })).withFaceLandmarks(); await window.faceapi.nets.faceRecognitionNet.computeFaceDescriptor(warm); console.log('[scan] warm-up ms', Math.round(performance.now() - t0)); } catch (e) { console.warn('[scan] warm-up skipped', e); } })();
+            window.__sl('models loaded'); setModelsReady(true); (async () => { try { const t0 = performance.now(); const warm = document.createElement('canvas'); warm.width = 150; warm.height = 150; await window.faceapi.detectSingleFace(warm, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 288, scoreThreshold: 0.4 })).withFaceLandmarks(); await window.faceapi.nets.faceRecognitionNet.computeFaceDescriptor(warm); for (const n of [window.faceapi.nets.faceLandmark68Net, window.faceapi.nets.faceLandmark68TinyNet]) { if (n && n.isLoaded) await n.detectLandmarks(warm); } console.log('[scan] warm-up ms', Math.round(performance.now() - t0)); } catch (e) { console.warn('[scan] warm-up skipped', e); } })();
         })().catch(() => setError('Could not load face detection models.'));
     }, []);
 
     useEffect(() => {
-        if (!modelsReady) return;
         (async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 640 } });
                 streamRef.current = stream;
-                if (videoRef.current) videoRef.current.srcObject = stream;
+                window.__sl && window.__sl('camera stream ready'); if (videoRef.current) videoRef.current.srcObject = stream;
             } catch {
                 setError('Camera access denied. Please allow camera permissions.');
             }
@@ -501,7 +500,14 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
         return () => {
             if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
         };
-    }, [modelsReady]);
+    }, []);
+
+    // Attach the camera stream whenever the video element is available (the camera now starts before the models finish loading)
+    useEffect(() => {
+        const v = videoRef.current;
+        const s = streamRef.current;
+        if (v && s && v.srcObject !== s) v.srcObject = s;
+    });
 
     useEffect(() => {
         if (!modelsReady || !challengeReady || submitting) return;
@@ -509,7 +515,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
         let capturing = false;
         let timer = null;
         let cachedPos = null;
-        let preState = 0;
+        let preState = 0; let preDesc = null;
 
         const geoOpts = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
         // Start the location lookup now so it is ready when the blink passes.
@@ -533,7 +539,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
         const getPos = (ok, fail) => {
             const started = Date.now();
             const check = () => {
-                if (cachedPos && (cachedPos.coords.accuracy <= 150 || Date.now() - started > 2500)) {
+                if (cachedPos && (cachedPos.coords.accuracy <= 150 || Date.now() - started > 1200)) {
                     stopGeo();
                     return ok(cachedPos);
                 }
@@ -541,20 +547,20 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                     stopGeo();
                     return fail(lastGeoErr || { code: 3, message: 'Location timeout' });
                 }
-                setTimeout(check, 400);
+                setTimeout(check, 100);
             };
             check();
         };
 
         const SEQ = ['left', 'right', 'blink'];
-        const LABEL = { left: 'Turn your head LEFT', right: 'Turn your head RIGHT', blink: 'Now BLINK your eyes' };
+        const LABEL = { left: 'Turn your head LEFT', right: 'Turn your head RIGHT', blink: 'Face the camera, neutral face, then BLINK once' };
         const POSE_NEEDED = 4;
         const TURN_LEFT = 1.7;
         const TURN_RIGHT = 0.6;
 
         const bs = blinkState.current;
         stage.current = 'challenge';
-        bs.step = 0; bs.t = Date.now(); bs.base = 0; bs.closed = false; bs.n = 0; window.__scanT0 = performance.now();
+        bs.step = 0; bs.t = Date.now(); bs.base = 0; bs.closed = false; bs.n = 0; window.__scanT0 = performance.now(); window.__sl && window.__sl('scan loop started');
         poseFrames.current = 0;
         holdCounter.current = 0;
 
@@ -581,7 +587,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
 
             const { token, challenge } = challengeRef.current;
             const opts = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
-            let full = null; const tCap = performance.now();
+            let full = (preState === 2 && preDesc) ? { descriptor: preDesc } : null; const tCap = performance.now();
             for (let i = 0; i < 4 && !full; i++) {
                 full = await window.faceapi.detectSingleFace(videoRef.current, opts).withFaceLandmarks().withFaceDescriptor(); console.log('[scan] detect+descriptor ms', Math.round(performance.now() - tCap));
             }
@@ -634,7 +640,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
             const frame = brightFrame();
             if (!frame) return;
             const opts = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 288, scoreThreshold: 0.4 });
-            const result = await window.faceapi.detectSingleFace(frame, opts).withFaceLandmarks();
+            const result = await window.faceapi.detectSingleFace(frame, opts).withFaceLandmarks(); if (!window.__scanFirstDet) { window.__scanFirstDet = 1; window.__sl && window.__sl('first detection finished (face found: ' + !!result + ')'); }
             if (!cancelled && !capturing && !result) setStatusText('No face found. Look at the camera.');
 
             if (cancelled || capturing) return;
@@ -655,10 +661,10 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                 const py = (OVAL_RY * 2 - frame.height * sc) / 2 + (bx.y + bx.height / 2) * sc;
                 const nx = (px - OVAL_RX) / OVAL_RX;
                 const ny = (py - OVAL_RY) / OVAL_RY;
-                if (nx * nx + ny * ny > 0.6) {
+                if (nx * nx + ny * ny > 0.85) {
                     poseFrames.current = 0;
                     bs.n = 0;
-                    setRingColor('#DC2626');
+                    setRingColor('#16a34a');
                     setStatusText('Center your face inside the oval.');
                     return;
                 }
@@ -670,16 +676,15 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
             const ear = (eyeAspectRatio(lm.getLeftEye()) + eyeAspectRatio(lm.getRightEye())) / 2;
 
             // Early face check: reject a wrong face right at the start (normal scan only)
-            if (!fbCodeRef.current && preState !== 2) {
-                if (preState === 1) return;
-                if (ratio < 0.8 || ratio > 1.25) { setStatusText('Look straight at the camera.'); return; }
+            if (!fbCodeRef.current && preState === 0) {
+                if (ratio < 0.7 || ratio > 1.4) { setStatusText('Look straight at the camera.'); return; }
 
             // Neutral-face check (mouth closed, eyes open). Tune these two numbers:
             //   MOUTH_MAX: bigger = more relaxed (strict: 0.20, relaxed: 0.35)
             //   EYE_MIN:   smaller = more relaxed (strict: 0.20, relaxed: 0.16)
             {
-                const MOUTH_MAX = 0.25;
-                const EYE_MIN = 0.18;
+                const MOUTH_MAX = 0.35;
+                const EYE_MIN = 0.16;
                 const P = lm.positions;
                 const d = (a, b) => Math.hypot(P[a].x - P[b].x, P[a].y - P[b].y);
                 const mouthOpen = d(62, 66) / d(48, 54);
@@ -690,18 +695,20 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                 // must stay bad for 4 frames in a row, so a normal blink does not fail
                 window.__exprBad = bad ? (window.__exprBad || 0) + 1 : 0;
                 if (window.__exprBad >= 4) {
-                    setRingColor('#DC2626');
+                    setRingColor('#16a34a');
                     setStatusText('Relax your face, mouth closed.');
                     return;
                 }
             }
                 preState = 1;
                 setStatusText('Checking your face...');
+                (async () => {
+                const tPre = performance.now();
                 try {
                     const o = new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
-                    const f = await window.faceapi.detectSingleFace(videoRef.current, o).withFaceLandmarks().withFaceDescriptor();
+                    const f = await window.faceapi.detectSingleFace(videoRef.current, o).withFaceLandmarks().withFaceDescriptor(); console.log('[scan] precheck descriptor ms', Math.round(performance.now() - tPre));
                     if (cancelled) return;
-                    if (!f) { preState = 0; return; }
+                    if (!f) { preState = 0; return; } preDesc = f.descriptor;
                     const xsrf = decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '');
                     const r = await fetch(route('volunteer.face.precheck'), {
                         method: 'POST',
@@ -710,6 +717,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                         body: JSON.stringify({ face_descriptor: Array.from(f.descriptor) }),
                     });
                     if (cancelled) return;
+                    console.log('[scan] precheck total ms', Math.round(performance.now() - tPre));
                     if (r.status === 422) {
                         const j = await r.json().catch(() => ({}));
                         preState = 0;
@@ -721,7 +729,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                 } catch (e) {
                     preState = 2;
                 }
-                return;
+                })();
             }
 
             const cur = SEQ[bs.step];
@@ -729,7 +737,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
             const prefix = done ? done + '  |  ' : '';
 
             // short pause after each step so leftover movement does not count
-            if (Date.now() - (bs.t || 0) < 600) {
+            if (Date.now() - (bs.t || 0) < (bs.step === 0 ? 100 : 600)) {
                 setRingColor('#16a34a');
                 setRingProgress(bs.step / SEQ.length);
                 return;
@@ -739,26 +747,78 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
             let partial = 0;
 
             if (cur === 'left' || cur === 'right') {
-                const turned = cur === 'left' ? ratio > TURN_LEFT : ratio < TURN_RIGHT;
+                const Pm = lm.positions;
+                const dm = (a, b) => Math.hypot(Pm[a].x - Pm[b].x, Pm[a].y - Pm[b].y);
+                const faceH = dm(27, 8);
+                // Tune these if turns get rejected too often (see console "[turn]" logs)
+                const T_MOUTH = 0.10, T_BROW = 9, T_LIFT = 9, T_TILT = 40, T_SCORE = 0.5;
+                const moT = dm(62, 66) / faceH;
+                const browT = ((Pm[27].y - Pm[19].y) + (Pm[27].y - Pm[24].y)) / 2 / faceH;
+                const liftT = ((Pm[51].y + Pm[57].y) / 2 - (Pm[48].y + Pm[54].y) / 2) / faceH;
+                const tiltT = Math.abs(Math.atan2(Pm[45].y - Pm[36].y, Pm[45].x - Pm[36].x) * 180 / Math.PI);
+                const eyeMidT = (Pm[36].y + Pm[45].y) / 2;
+                const pitchT = (Pm[30].y - eyeMidT) / (Pm[8].y - eyeMidT);
+                const scoreT = result.detection.score;
+                const cleanT = moT < T_MOUTH && browT < T_BROW && liftT < T_LIFT && tiltT < T_TILT && pitchT > 0.1 && pitchT < 0.9 && scoreT > T_SCORE;
+                if (!cleanT) {
+                    poseFrames.current = 0;
+                    window.__dbgT = (window.__dbgT || 0) + 1;
+                    if (window.__dbgT % 15 === 0) console.log('[turn]', { moT: +moT.toFixed(2), browT: +browT.toFixed(2), liftT: +liftT.toFixed(3), tiltT: +tiltT.toFixed(1), pitchT: +pitchT.toFixed(2), scoreT: +scoreT.toFixed(2) });
+                    setRingColor('#16a34a');
+                    setRingProgress(bs.step / SEQ.length);
+                    const whyT = scoreT < T_SCORE ? 'Face not fully visible (hand or mask)' : (tiltT >= T_TILT ? 'Head tilted' : ((pitchT <= 0.1 || pitchT >= 0.9) ? 'Head tilted up or down' : (moT >= T_MOUTH ? 'Mouth open' : (browT >= T_BROW ? 'Eyebrows raised' : (liftT >= T_LIFT ? 'Smiling' : 'Not a neutral face'))))); bs.ok = 0; setStatusText(whyT); if (!bs.bad) bs.bad = Date.now(); if (!cancelled && Date.now() - bs.bad > 2500) { cancelled = true; setRingColor('#16a34a'); window.__lastDbg = JSON.stringify({ moT: +moT.toFixed(3), browT: +browT.toFixed(2), liftT: +liftT.toFixed(3), tiltT: +tiltT.toFixed(1), pitchT: +pitchT.toFixed(2), scoreT: +scoreT.toFixed(2) }); setPoseFail(whyT); setStatusText('Failed'); }
+                    return;
+                }
+                bs.ok = (bs.ok || 0) + 1; if (bs.ok >= 2) bs.bad = 0; const turned = cur === 'left' ? ratio > TURN_LEFT : ratio < TURN_RIGHT;
                 poseFrames.current = turned ? poseFrames.current + 1 : 0;
                 partial = Math.min(1, poseFrames.current / POSE_NEEDED);
                 passed = poseFrames.current >= POSE_NEEDED;
             } else {
-                const facing = ratio > 0.7 && ratio < 1.4;
-                if (!facing) { bs.n = 0; bs.closed = false; }
-                else {
-                    bs.base = Math.max((bs.base || 0) * 0.997, ear);
-                    if (ear < bs.base * 0.9) { bs.closed = true; }
-                    else { if (bs.closed && ear > bs.base * 0.94) passed = true; }
+                // Tune these if it is too strict or too loose (see console "[expr]" logs)
+                const MOUTH_OPEN_MAX = 0.22;
+                const SMILE_MAX = 0.44;
+                const BROW_MAX = 0.28;
+                const TILT_MAX = 12;
+                const P = lm.positions;
+                const dd = (a, b) => Math.hypot(P[a].x - P[b].x, P[a].y - P[b].y);
+                const faceW = dd(0, 16);
+                const mouthOpenR = dd(62, 66) / dd(48, 54);
+                const smileR = dd(48, 54) / faceW;
+                const browR = ((P[27].y - P[19].y) + (P[27].y - P[24].y)) / 2 / faceW;
+                const tilt = Math.abs(Math.atan2(P[45].y - P[36].y, P[45].x - P[36].x) * 180 / Math.PI);
+                const eyeMidY = (P[36].y + P[45].y) / 2;
+                const pitch = (P[30].y - eyeMidY) / (P[8].y - eyeMidY);
+                const straight = ratio > 0.2 && ratio < 5 && tilt < TILT_MAX && pitch > 0.28 && pitch < 0.65;
+                const calm = mouthOpenR < MOUTH_OPEN_MAX && smileR < SMILE_MAX && browR < BROW_MAX && result.detection.score > 0.7;
+                if (!straight || !calm) {
+                    bs.closed = false; bs.warm = 0; bs.base = 0;
+                    window.__dbgN = (window.__dbgN || 0) + 1;
+                    if (window.__dbgN % 15 === 0) console.log('[expr]', { mouthOpenR: +mouthOpenR.toFixed(2), smileR: +smileR.toFixed(2), browR: +browR.toFixed(2), tilt: +tilt.toFixed(1), pitch: +pitch.toFixed(2), ratio: +ratio.toFixed(2) });
+                    setRingColor('#16a34a');
+                    const whyB = result.detection.score <= 0.7 ? 'Face not fully visible (hand or mask)' : (tilt >= TILT_MAX ? 'Head tilted' : ((pitch <= 0.28 || pitch >= 0.65) ? 'Head tilted up or down' : (!(ratio > 0.2 && ratio < 5) ? 'Not looking straight at the camera' : (mouthOpenR >= MOUTH_OPEN_MAX ? 'Mouth open' : (smileR >= SMILE_MAX ? 'Smiling' : 'Eyebrows raised'))))); bs.ok = 0; setRingProgress(bs.step / SEQ.length); setStatusText(whyB); if (!bs.bad) bs.bad = Date.now(); if (!cancelled && Date.now() - bs.bad > 2500) { cancelled = true; setRingColor('#16a34a'); window.__lastDbg = JSON.stringify({ mouthOpenR: +mouthOpenR.toFixed(2), smileR: +smileR.toFixed(2), browR: +browR.toFixed(2), tilt: +tilt.toFixed(1), pitch: +pitch.toFixed(2), ratio: +ratio.toFixed(2), score: +result.detection.score.toFixed(2) }); setPoseFail(whyB); setStatusText('Failed'); }
+                    return;
                 }
-                partial = bs.closed ? 0.5 : 0;
+                bs.ok = (bs.ok || 0) + 1; if (bs.ok >= 2) bs.bad = 0; if (!bs.closed && (!bs.base || ear > bs.base * 0.85)) {
+                    bs.base = bs.base ? bs.base * 0.85 + ear * 0.15 : ear;
+                    bs.warm = (bs.warm || 0) + 1;
+                }
+                if (bs.warm >= 4) {
+                    if (!bs.closed) {
+                        if (ear < bs.base * 0.93) { bs.closed = true; bs.ct = Date.now(); }
+                    } else if (ear > bs.base * 0.96) {
+                        if (Date.now() - bs.ct < 1500) { passed = true; } else { bs.closed = false; }
+                    } else if (Date.now() - bs.ct > 1500) {
+                        bs.closed = false; bs.warm = 0; bs.base = 0;
+                    }
+                }
+                partial = bs.closed ? 0.5 : 0; setStatusText('Face the camera, neutral face, then BLINK once');
             }
 
             if (passed) {
                 bs.step += 1;
                 bs.t = Date.now();
                 poseFrames.current = 0;
-                bs.closed = false; bs.n = 0; bs.base = 0;
+                bs.closed = false; bs.n = 0; bs.base = 0; bs.bad = Date.now() + 8000; bs.ok = 0;
                 if (bs.step >= SEQ.length) {
                     await capture();
                 } else {
@@ -767,7 +827,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                     setStatusText('\u2713 ' + cur.toUpperCase() + ' passed  |  ' + (bs.step + 1) + '/3 ' + LABEL[SEQ[bs.step]]);
                 }
             } else {
-                setRingColor('#f59e0b');
+                setRingColor('#16a34a');
                 setRingProgress((bs.step + partial) / SEQ.length);
                 setStatusText(prefix + (bs.step + 1) + '/3 ' + LABEL[cur]);
             }
@@ -775,7 +835,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
 
         const loop = async () => {
             const tl = performance.now(); try { await step(); } catch (e) { console.error(e); } window.__scanFrames = (window.__scanFrames || 0) + 1; window.__scanMs = (window.__scanMs || 0) + (performance.now() - tl); if (window.__scanFrames % 25 === 0) console.log('[scan] avg ms per frame', Math.round(window.__scanMs / window.__scanFrames));
-            if (!cancelled) timer = setTimeout(loop, 40);
+            if (!cancelled) timer = setTimeout(loop, bs.step === SEQ.length - 1 ? 0 : 40);
         };
         loop();
 
@@ -927,20 +987,45 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
                 </div>
             )}
 
-            {error && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '10px', padding: '10px 16px', fontSize: '12px', marginBottom: '16px', maxWidth: '320px', textAlign: 'center' }}>
-                    {error}
+            {poseFail && (
+                <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '10px', padding: '14px', fontSize: '12px', lineHeight: 1.5, marginBottom: '16px', maxWidth: '320px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Failed</div>
+                    <div>{poseFail}. Please keep a neutral face, mouth closed, eyes open, head level, facing the camera.</div>
+                    <button type="button" onClick={() => { setPoseFail(''); setError(''); resetScan(); }} style={{ marginTop: '12px', background: '#CC0000', color: '#fff', border: 0, borderRadius: '8px', padding: '9px 22px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Try again</button>
                 </div>
             )}
+
+            {error && (() => {
+                const far = /You are too far from the activity location\. You are ([\d.]+)m away\. Allowed: ([\d.]+)m\./.exec(String(error));
+                const fmtM = (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                const svgProps = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, style: { flexShrink: 0, marginTop: '1px' } };
+                return (
+                    <div role="alert" data-alert={far ? 'too-far' : 'error'} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '10px', padding: '12px', fontSize: '12px', lineHeight: 1.5, marginBottom: '16px', maxWidth: '320px', textAlign: 'left' }}>
+                        {far ? (
+                            <svg {...svgProps}><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" /><line x1="3" y1="3" x2="21" y2="21" /></svg>
+                        ) : (
+                            <svg {...svgProps}><circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                        )}
+                        <div>
+                            {far ? (
+                                <>
+                                    <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '2px' }}>{'You\u2019re too far from the activity'}</div>
+                                    <div>{'You\u2019re ' + fmtM(far[1]) + ' m away. ' + (mode === 'checkin' ? 'Time In' : 'Time Out') + ' works within ' + fmtM(far[2]) + ' m of the venue.'}</div>
+                                </>
+                            ) : error}
+                        </div>
+                    </div>
+                );
+            })()}
 
             <div style={{ position: 'relative', width: `${OVAL_RX * 2 + 24}px`, height: `${OVAL_RY * 2 + 24}px` }}>
                 <div style={{
                     position: 'absolute', inset: '12px',
-                    borderRadius: '50%', overflow: 'hidden', background: '#000',
+                    borderRadius: '50%', overflow: 'hidden', background: '#f3f4f6',
                 }}>
-                    <video
+                    {!camOn && (<div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', color: '#9ca3af' }}>Starting camera...</div>)}<video
                         ref={videoRef}
-                        autoPlay muted playsInline
+                        autoPlay muted playsInline onPlaying={() => setCamOn(true)}
                         style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
                     />
                 </div>
@@ -959,7 +1044,7 @@ export function AttendanceCapture({ mode, activityId, onClose, onSuccess }) {
             </div>
 
             {!modelsReady && (
-                <div style={{ marginTop: '18px', fontSize: '12px', color: '#bbb' }}>Loading camera model...</div>
+                <div style={{ marginTop: '18px', fontSize: '12px', color: '#bbb' }}>Getting face detection ready...</div>
             )}
         </div>
     );

@@ -1,9 +1,11 @@
+import { usePage } from '@inertiajs/react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 
 export default function Login({ status, canResetPassword }) {
     const [showPassword, setShowPassword] = useState(false);
 
+    const pageErrors = usePage().props.errors || {};
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',
@@ -12,7 +14,7 @@ export default function Login({ status, canResetPassword }) {
 
     const submit = (e) => {
         e.preventDefault();
-        post(route('login'), {
+        try { sessionStorage.setItem('rc_welcome', '1'); } catch (err) {} post(route('login'), {
             onFinish: () => reset('password'),
         });
     };
@@ -96,11 +98,16 @@ export default function Login({ status, canResetPassword }) {
                     width: 100%; padding: 7px 12px;
                     border-radius: 10px; font-size: 12px;
                     outline: none; color: #111;
-                    background: #fff3f3; box-sizing: border-box;
+                    background: #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.12); box-sizing: border-box;
                     font-family: 'Source Sans 3', sans-serif;
                     transition: border 0.15s;
                 }
-                .login-input:focus { border-color: #DC2626 !important; box-shadow: 0 0 0 3px rgba(220,38,38,0.08); }
+                .login-input:focus { box-shadow: 0 3px 10px rgba(0,0,0,0.18); }
+
+                .login-input:-webkit-autofill, .login-input:-webkit-autofill:hover, .login-input:-webkit-autofill:focus {
+                    -webkit-text-fill-color: #111;
+                    transition: background-color 600000s 0s, color 600000s 0s;
+                }
 
                 .password-toggle-btn {
                     position: absolute; right: 4px; top: 50%;
@@ -142,7 +149,7 @@ export default function Login({ status, canResetPassword }) {
                 .field-icon {
                     position: absolute; left: 12px; top: 50%;
                     transform: translateY(-50%);
-                    color: #c9a3a3; display: flex; pointer-events: none;
+                    color: #9ca3af; display: flex; pointer-events: none;
                 }
                 .login-input.with-icon { padding-left: 36px; }
 
@@ -272,11 +279,11 @@ export default function Login({ status, canResetPassword }) {
                                         onChange={(e) => setData('email', e.target.value)}
                                         placeholder="Enter your email address"
                                         className="login-input with-icon"
-                                        style={{ border: errors.email ? '1px solid #DC2626' : '1px solid #ffe2e2' }}
+                                        style={{ border: (errors.email || pageErrors.email) ? '1px solid #DC2626' : '1px solid transparent' }}
                                     />
                                 </div>
-                                {errors.email && (
-                                    <p style={{ fontSize: '10px', color: '#DC2626', marginTop: '4px', fontFamily: 'Source Sans 3, sans-serif' }}>{errors.email}</p>
+                                {(errors.email || pageErrors.email) && (
+                                    <p style={{ fontSize: '10px', color: '#DC2626', marginTop: '4px', fontFamily: 'Source Sans 3, sans-serif' }}>{(errors.email || pageErrors.email)}</p>
                                 )}
                             </div>
 
@@ -302,7 +309,7 @@ export default function Login({ status, canResetPassword }) {
                                         placeholder="Enter your password"
                                         className="login-input with-icon"
                                         style={{
-                                            border: errors.password ? '1px solid #DC2626' : '1px solid #ffe2e2',
+                                            border: errors.password ? '1px solid #DC2626' : '1px solid transparent',
                                             paddingRight: '38px',
                                         }}
                                     />
@@ -368,7 +375,7 @@ export default function Login({ status, canResetPassword }) {
                                 type="button"
                                 className="google-btn"
                                 style={{ marginBottom: '10px' }}
-                                onClick={() => { /* TODO: window.location.href = route('auth.google') */ }}
+                                onClick={() => { window.location.href = route('auth.google'); }}
                             >
                                 <svg width="14" height="14" viewBox="0 0 48 48">
                                     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />

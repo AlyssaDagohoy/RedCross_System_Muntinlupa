@@ -75,7 +75,7 @@ class GroupChatController extends Controller
     {
         $this->member($request);
 
-        $disk = Storage::disk('local');
+        $u = $request->user(); $j = $u->approved_at ? \Carbon\Carbon::parse($u->approved_at) : $u->created_at; if (! $u->hasAnyRole(['admin', 'Admin']) && $j && $groupMessage->created_at && $groupMessage->created_at->lt($j)) { abort(404); } $disk = Storage::disk('local');
         abort_unless($groupMessage->attachment_path && $disk->exists($groupMessage->attachment_path), 404);
 
         return response()->file($disk->path($groupMessage->attachment_path), [

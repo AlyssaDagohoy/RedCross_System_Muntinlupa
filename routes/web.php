@@ -406,6 +406,14 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
             ->whereDate('date', '>=', today())
             ->get(['activities.id', 'activities.name', 'activities.location_name', 'activities.date', 'activities.latitude', 'activities.longitude', 'activities.radius_meters', 'activities.start_time', 'activities.end_time', 'activities.description', 'activities.assigned_by']);
 
+        // drop activities that already ended, unless the volunteer is timed in and still inside the Time Out window
+        $stillRelevant = function ($a) use ($todayAttendance) {
+            if (now()->lte($a->endsAt())) return true;
+            $rec = $todayAttendance->firstWhere('activity_id', $a->id);
+            return $rec && $rec->time_in && !$rec->time_out && now()->lt($a->timeOutClosesAt());
+        };
+        $assignedActivities = $assignedActivities->filter($stillRelevant)->values();
+        $activities = $activities->filter($stillRelevant)->values();
         $doneStatuses = ['needs_review', 'absent', 'cancelled'];
         $attendedCount = \App\Models\Attendance::where('user_id', $user->id)->whereNotNull('time_out')->whereNotIn('status', $doneStatuses)->count();
         $missedCount   = \App\Models\Attendance::where('user_id', $user->id)->whereIn('status', ['absent', 'cancelled'])->count();
@@ -504,7 +512,9 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
             ->get(['activity_id', 'time_in', 'time_out', 'status'])
             ->keyBy('activity_id');
 
-        $activities = $activities->map(function ($act) use ($attendanceByActivity) {
+        $pendingDtr = \App\Models\DtrSubmission::where('user_id', $user->id)->where('status', 'pending')->pluck('activity_id');
+
+        $activities = $activities->map(function ($act) use ($attendanceByActivity, $pendingDtr) {
             $rec = $attendanceByActivity->get($act->id);
 
             // compares dates only (startOfDay), so today's own activities are never
@@ -515,6 +525,8 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
                 // stays cancelled
             } elseif ($rec && $rec->status === 'absent') {
                 $act->status = 'missed';
+            } elseif ($rec && $rec->status === 'needs_review') {
+                $act->status = 'completed';
             } elseif ($rec && $rec->time_out) {
                 $act->status = 'completed';
             } elseif ($rec && $rec->time_in) {
@@ -524,6 +536,11 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
                 $act->status = 'missed';
             } else {
                 $act->status = 'assigned';
+                if ((!$rec || (!$rec->time_in && !$rec->time_out)) && now()->gte($act->endsAt()) && !$pendingDtr->contains($act->id)) {
+                    $act->status = 'missed';
+                } elseif (!$rec && now()->gte($act->startsAt()) && now()->lt($act->endsAt())) {
+                    $act->phase = 'ongoing';
+                }
             }
 
             // expose the raw time_out so the frontend can break ties between
@@ -555,6 +572,7 @@ Route::middleware(['auth', 'role:volunteer'])->prefix('volunteer')->name('volunt
 
     // Communication
     Route::get('/communication', [CommunicationController::class, 'index'])->name('communication');
+    Route::get('/announcements', [CommunicationController::class, 'announcements'])->name('announcements');
     Route::post('/communication/send', [CommunicationController::class, 'send'])->name('communication.send');
     Route::post('/communication/{email}/reply', [CommunicationController::class, 'reply'])->name('communication.reply');
     Route::post('/communication/read', [CommunicationController::class, 'markRead'])->name('communication.read');

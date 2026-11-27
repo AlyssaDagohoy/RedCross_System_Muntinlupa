@@ -21,7 +21,7 @@ const clearFlag = () => { try { sessionStorage.removeItem(KEY); } catch (err) {}
 const markGuest = () => { try { sessionStorage.setItem(KEY, '1'); } catch (err) {} };
 const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-const needsPick = (props) => !!props && Array.isArray(props.staffList) && props.staffList.length > 0 && !props.adminProfile;
+const needsPick = (props) => !!props && !!props.isAdminUser && Array.isArray(props.staffList) && props.staffList.length > 0 && !props.adminProfile;
 
 const initialPage = () => {
     try {
@@ -66,7 +66,7 @@ const cancel = () => {
 const startPending = () => {
     if (S.phase !== 'off' || reduced()) return;
     S.t0 = Date.now();
-    set({ phase: 'in', shown: false, bar: false, instant: false, confirmed: false });
+    set({ phase: 'in', shown: true, bar: false, instant: false, confirmed: false });
     guard = setTimeout(cancel, 8000);
 };
 

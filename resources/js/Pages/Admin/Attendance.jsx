@@ -46,9 +46,19 @@ const locationLabel = (name) => {
 const methodLabel = (m) => {
     const k = normKey(m || '');
     if (/finger/.test(k)) return 'Fingerprint';
-    if (/fallback/.test(k)) return 'Face + email code';
-    if (/face|facial/.test(k)) return 'Facial recognition';
+    if (/dtr/.test(k)) return 'DTR';
+    if (/manual/.test(k)) return 'Admin review';
+    if (/fallback/.test(k)) return 'Fallback';
+    if (/face|facial/.test(k)) return 'Face recognition';
     return '';
+};
+const methodTag = (m) => {
+    const label = methodLabel(m);
+    if (!label) return '-';
+    const tone = label === 'Fallback' ? { background: '#fdf3e1', color: '#a16207' }
+        : label === 'DTR' ? { background: '#e8f0fe', color: '#2f5fc4' }
+        : { background: '#f1f1f2', color: '#666' };
+    return <span style={{ ...tone, fontSize: '11px', fontWeight: '600', borderRadius: '6px', padding: '2px 8px', whiteSpace: 'nowrap' }}>{label}</span>;
 };
 const tagLabel = (v, suffix) => {
     const t = pretty(v);
@@ -116,11 +126,11 @@ const COLS = [
     { key: 'assigned', label: 'Assigned by', essential: false },
     { key: 'in', label: 'Time in', essential: true },
     { key: 'out', label: 'Time out', essential: true },
-    { key: 'method', label: 'Method', essential: false },
+    { key: 'method', label: 'Method', essential: true },
     { key: 'hours', label: 'Hours', essential: true },
     { key: 'status', label: 'Status', essential: true },
 ];
-const COLS_KEY = 'attendance_columns_v1';
+const COLS_KEY = 'attendance_columns_v2';
 const essentialCols = () => Object.fromEntries(COLS.map(c => [c.key, !!c.essential]));
 const loadCols = () => {
     try {
@@ -214,7 +224,7 @@ const COL_HELP = {
     name: 'Always shown',
     atime: 'Scheduled start and end',
     assigned: 'Who created the activity',
-    method: 'Face, or face + email code',
+    method: 'Face recognition, fallback, DTR or admin review',
 };
 const TIME_LOG_KEYS = ['name', 'activity', 'in', 'out', 'hours'];
 
@@ -317,6 +327,21 @@ export default function AdminAttendance({ attendances, volunteers, activities, o
     const [errs, setErrs] = useState({});
     const [saving, setSaving] = useState(false);
     const [tab, setTab] = useState('records');
+    const [pager, setPager] = useState({ key: '', page: 1, per: 7 });
+    const pagerKey = JSON.stringify([applied, attendances.length]);
+    const perPage = pager.per;
+    const pageCount = Math.max(1, Math.ceil(attendances.length / perPage));
+    const safePage = Math.min(pager.key === pagerKey ? pager.page : 1, pageCount);
+    const pageRows = attendances.slice((safePage - 1) * perPage, safePage * perPage);
+    const pageNums = [];
+    for (let i = Math.max(1, safePage - 2); i <= Math.min(pageCount, safePage + 2); i++) pageNums.push(i);
+    const goPage = (p) => setPager({ key: pagerKey, page: Math.min(Math.max(1, p), pageCount), per: perPage });
+    const setPer = (n) => setPager({ key: pagerKey, page: 1, per: n });
+    const pgBtn = (on, off) => ({
+        height: '28px', minWidth: '28px', padding: '0 8px', borderRadius: '6px', border: '1px solid #e0e0e0',
+        background: on ? '#e9e9ec' : 'white', color: off ? '#bbb' : '#555', fontSize: '12px', fontWeight: '600',
+        fontFamily: 'inherit', cursor: off ? 'not-allowed' : 'pointer',
+    });
 
     const deleteSelfie = (r) => {
         if (window.confirm('Delete this selfie? The attendance record stays, but the photo cannot be recovered.')) {
@@ -688,23 +713,12 @@ const timeOutValue = f.time_out_status === 'none' ? 'none' : matchOpt(timeOutOpt
             {tab === 'records' && (<>
             {/* TABLE */}
             <div style={{ background: 'white', borderRadius: '0 10px 10px 10px', border: '1px solid #e5e5e5', overflow: 'hidden' }}>
-                {anyFilter && (
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #f0f0f0' }}>
-                        {chips.map((c, i) => (
-                            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff1f1', color: '#CC0000', border: '1px solid #f5c2c2', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '600' }}>
-                                {c.label}
-                                <span onClick={() => removeChip(c.clear)} className="chip-x" style={{ cursor: 'pointer', color: '#e57373', fontSize: '13px', lineHeight: 1 }}>&times;</span>
-                            </span>
-                        ))}
-                        <button onClick={clearAll} style={{ background: 'none', border: 'none', color: '#666', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>Clear all</button>
-                    </div>
-                )}
-                <div style={{ overflowX: 'auto' }}>
+                <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 250px)' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: (visibleCount * 100 + 80) + 'px' }}>
                         <thead>
                             <tr style={{ background: '#fafafa' }}>
                                 {['Date', 'Name', 'Activity', 'Activity time', 'Location', 'Assigned by', 'Time in', 'Time out', 'Method', 'Hours', 'Status', ''].filter(colOn).map((h, i) => (
-                                    <th key={i} style={{ padding: '10px 18px', textAlign: 'left', fontSize: '11px', fontWeight: '500', color: '#999', whiteSpace: 'nowrap' }}>{h}</th>
+                                    <th key={i} style={{ position: 'sticky', top: 0, zIndex: 1, background: '#fafafa', boxShadow: '0 1px 0 #ececec', padding: '10px 14px', textAlign: 'left', fontSize: '11px', fontWeight: '500', color: '#999', whiteSpace: 'nowrap' }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
@@ -713,23 +727,23 @@ const timeOutValue = f.time_out_status === 'none' ? 'none' : matchOpt(timeOutOpt
                                 <tr>
                                     <td colSpan={visibleCount + 1} style={{ padding: '48px', textAlign: 'center', color: '#ccc', fontSize: '13px' }}>No attendance records found.</td>
                                 </tr>
-                            ) : attendances.map((record) => {
+                            ) : pageRows.map((record) => {
                                 const label = statusLabel(record);
                                 return (
                                     <tr key={record.id} className="row-hover" style={{ borderTop: '1px solid #f5f5f5', transition: 'background 0.1s' }}>
-                                        {show('date') && <td style={{ padding: '11px 18px', fontSize: '13px', fontWeight: '500', color: '#111', whiteSpace: 'nowrap' }}>{formatDate(record.date)}</td>}
-                                        <td style={{ padding: '11px 18px', fontSize: '13px', fontWeight: '600', color: '#111', whiteSpace: 'nowrap' }}>{record.user?.name ?? '-'}</td>
-                                        {show('activity') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555' }}><div title={record.activity?.name ?? ''} style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{record.activity?.name ?? '-'}</div></td>}
-                                        {show('atime') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{formatSchedule(record.activity)}</td>}
-                                        {show('location') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555' }}><div title={record.activity?.type === 'branch' ? 'Branch' : (locationLabel(record.activity?.location_name) || '')} style={{ maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(record.activity?.type === 'branch' ? 'Branch' : locationLabel(record.activity?.location_name)) || '-'}</div></td>}
-                                        {show('assigned') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{record.activity?.assigned_by || '-'}</td>}
+                                        {show('date') && <td style={{ padding: '11px 14px', fontSize: '13px', fontWeight: '500', color: '#111', whiteSpace: 'nowrap' }}>{formatDate(record.date)}</td>}
+                                        <td style={{ padding: '11px 14px', fontSize: '13px', fontWeight: '600', color: '#111', whiteSpace: 'nowrap' }}>{record.user?.name ?? '-'}</td>
+                                        {show('activity') && <td style={{ padding: '11px 14px', fontSize: '13px', color: '#555' }}><div title={record.activity?.name ?? ''} style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{record.activity?.name ?? '-'}</div></td>}
+                                        {show('atime') && <td style={{ padding: '11px 14px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{formatSchedule(record.activity)}</td>}
+                                        {show('location') && <td style={{ padding: '11px 14px', fontSize: '13px', color: '#555' }}><div title={record.activity?.type === 'branch' ? 'Branch' : (locationLabel(record.activity?.location_name) || '')} style={{ maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(record.activity?.type === 'branch' ? 'Branch' : locationLabel(record.activity?.location_name)) || '-'}</div></td>}
+                                        {show('assigned') && <td style={{ padding: '11px 14px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{record.activity?.assigned_by || '-'}</td>}
                                         
-                                        {show('in') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#16a34a', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatTime(record.time_in)}</td>}
-                                        {show('out') && <td style={{ padding: '11px 18px', fontSize: '13px', color: record.time_out ? '#CC0000' : '#666', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatTime(record.time_out)}</td>}
-                                        {show('method') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{methodLabel(record.attendance_method) || '-'}</td>}
-                                        {show('hours') && <td style={{ padding: '11px 18px', fontSize: '13px', color: '#111', fontWeight: '600', whiteSpace: 'nowrap' }}>{record.hours_rendered ? record.hours_rendered + ' hrs' : '-'}</td>}
-                                        {show('status') && <td style={{ padding: '11px 18px' }}><Tag tone={statusTone(label)}>{label}</Tag></td>}
-                                        <td style={{ padding: '11px 18px', whiteSpace: 'nowrap' }}>
+                                        {show('in') && <td style={{ padding: '11px 14px', fontSize: '13px', color: '#16a34a', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatTime(record.time_in)}</td>}
+                                        {show('out') && <td style={{ padding: '11px 14px', fontSize: '13px', color: record.time_out ? '#CC0000' : '#666', fontWeight: '400', whiteSpace: 'nowrap' }}>{formatTime(record.time_out)}</td>}
+                                        {show('method') && <td style={{ padding: '11px 14px', fontSize: '13px', color: '#555', whiteSpace: 'nowrap' }}>{methodTag(record.attendance_method)}</td>}
+                                        {show('hours') && <td style={{ padding: '11px 14px', fontSize: '13px', color: '#111', fontWeight: '600', whiteSpace: 'nowrap' }}>{record.hours_rendered ? record.hours_rendered + ' hrs' : '-'}</td>}
+                                        {show('status') && <td style={{ padding: '11px 14px' }}><Tag tone={statusTone(label)}>{label}</Tag></td>}
+                                        <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
                                             {selfieBtns(record)}<button onClick={() => openEdit(record)} style={{ padding: '5px 12px', background: '#f7f7f8', color: '#555', border: '1px solid #ebebeb', borderRadius: '7px', fontWeight: '600', fontSize: '11px', cursor: 'pointer' }}>Edit</button>
                                         </td>
                                     </tr>
@@ -738,6 +752,27 @@ const timeOutValue = f.time_out_status === 'none' ? 'none' : matchOpt(timeOutOpt
                         </tbody>
                     </table>
                 </div>
+                {attendances.length > 7 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '10px 18px', borderTop: '1px solid #f0f0f0', fontSize: '12px', color: '#777' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span>Rows per page</span>
+                            <select value={perPage} onChange={(e) => setPer(Number(e.target.value))}
+                                style={{ height: '28px', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '0 8px', fontSize: '12px', color: '#666', fontFamily: 'inherit', background: 'white', outline: 'none' }}>
+                                <option value={7}>7</option>
+                                <option value={15}>15</option>
+                                <option value={25}>25</option>
+                            </select>
+                            <span>{(safePage - 1) * perPage + 1}-{Math.min(safePage * perPage, attendances.length)} of {attendances.length}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                            <button type="button" disabled={safePage <= 1} onClick={() => goPage(safePage - 1)} style={pgBtn(false, safePage <= 1)}>&lsaquo;</button>
+                            {pageNums.map((n) => (
+                                <button type="button" key={n} onClick={() => goPage(n)} style={pgBtn(n === safePage, false)}>{n}</button>
+                            ))}
+                            <button type="button" disabled={safePage >= pageCount} onClick={() => goPage(safePage + 1)} style={pgBtn(false, safePage >= pageCount)}>&rsaquo;</button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             </>)}
